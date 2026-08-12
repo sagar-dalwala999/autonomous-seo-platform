@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- seeded (manifest #14): omits /contact, /blog/rain-gear-care, /products/summit-stove, /gear-archive; includes the 404 URL /guides/gear-repair -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://summittrailgear.example/</loc></url>
+  <url><loc>https://summittrailgear.example/about</loc></url>
+  <url><loc>https://summittrailgear.example/blog</loc></url>
+  <url><loc>https://summittrailgear.example/blog/choosing-hiking-boots</loc></url>
+  <url><loc>https://summittrailgear.example/blog/backpack-fitting</loc></url>
+  <url><loc>https://summittrailgear.example/blog/layering-basics</loc></url>
+  <url><loc>https://summittrailgear.example/blog/trail-nutrition</loc></url>
+  <url><loc>https://summittrailgear.example/blog/winter-hiking-checklist</loc></url>
+  <url><loc>https://summittrailgear.example/blog/winter-day-hike-checklist</loc></url>
+  <url><loc>https://summittrailgear.example/blog/trail-snacks</loc></url>
+  <url><loc>https://summittrailgear.example/products</loc></url>
+  <url><loc>https://summittrailgear.example/products/ridgeline-backpack-45l</loc></url>
+  <url><loc>https://summittrailgear.example/products/cascade-rain-shell</loc></url>
+  <url><loc>https://summittrailgear.example/products/granite-hiking-boots</loc></url>
+  <url><loc>https://summittrailgear.example/products/switchback-trekking-poles</loc></url>
+  <url><loc>https://summittrailgear.example/guides</loc></url>
+  <url><loc>https://summittrailgear.example/guides/thru-hiking-gear-guide</loc></url>
+  <url><loc>https://summittrailgear.example/guides/first-time-backpacking</loc></url>
+  <url><loc>https://summittrailgear.example/guides/gear-repair</loc></url>
+</urlset>
