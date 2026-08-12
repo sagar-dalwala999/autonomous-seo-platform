@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Crawl evidence — regenerable, large, and contains third-party page content
+storage/
+
+# Local run state
+*.log
+scripts/.target-site.json
+**/.crawl-status.json
+
+# Test/tooling artifacts
+.playwright-mcp/
+test-results/
+playwright-report/
+coverage/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*credentials*.json
+*token*.json
+*.pem
+*.key
+
+# Python bytecode (gdocs tooling)
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
