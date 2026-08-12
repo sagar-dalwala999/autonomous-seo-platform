@@ -1,7 +1,9 @@
-/** Slice A4 — duplicate-title / duplicate-description / exact-dup / near-dup content clusters. */
+/** Slice A4 — duplicate-title / duplicate-description / exact-dup content clusters.
+ * near-duplicate-content (slice C3) delegates its clustering to ../../similarity.ts. */
 import type { CrawledPage, Issue, RuleMeta } from "../../../models/types";
-import { buildClusters, isRuleEnabled, pageIdFor, primaryUrl, pathnameOf, resolvedSeverity, sectionPrefix } from "./helpers";
+import { buildClusters, isRuleEnabled, pageIdFor, primaryUrl, resolvedSeverity } from "./helpers";
 import type { SiteRule } from "./types";
+import { DEFAULT_THRESHOLD, findNearDuplicates } from "../../similarity";
 
 function clusterIssues(
   members: CrawledPage[],
@@ -121,10 +123,14 @@ const nearDuplicateContentMeta: RuleMeta = {
   category: "duplicates",
   defaultSeverity: "notice",
   description:
-    "Two pages in the same site section have near-identical word counts (POC proxy — wordCount " +
-    "delta within threshold, NOT a real similarity score; minhash/shingling is Tier 2 future work).",
+    "Two or more pages have near-identical body content. Measured via 5-word-shingle MinHash " +
+    "signatures compared through LSH banding (see src/analysis/similarity.ts) and clustered " +
+    "when estimated Jaccard similarity meets the configured threshold (default 0.75 — " +
+    "thresholds.nearDupSimilarity in analysis.config.json). This is a real similarity score, " +
+    "not a length proxy: two pages of identical length with unrelated content will not fire, " +
+    "and two pages of different length with overlapping wording can.",
   howToFix: "Review for content overlap; differentiate or consolidate if truly duplicative.",
-  dataRequirements: ["content.wordCount"],
+  dataRequirements: ["content.text", "content.wordCount", "content.contentHash"],
 };
 
 export const nearDuplicateContentRule: SiteRule = {
@@ -132,71 +138,37 @@ export const nearDuplicateContentRule: SiteRule = {
   evaluate(ctx, config) {
     if (!isRuleEnabled(nearDuplicateContentMeta.id, config)) return null;
     const severity = resolvedSeverity(nearDuplicateContentMeta.id, nearDuplicateContentMeta.defaultSeverity, config);
-    const pct = config.thresholds.nearDupWordCountDeltaPct;
+    // nearDupSimilarity is additive to AnalysisConfig (slice C3) — absent on older configs/
+    // fixtures, so fall back to similarity.ts's own tuned default rather than requiring it.
+    const raw = config.thresholds.nearDupSimilarity;
+    const threshold = typeof raw === "number" && raw > 0 && raw <= 1 ? raw : DEFAULT_THRESHOLD;
+    const runId = ctx.pages[0]?.runId ?? "unknown";
+    const report = findNearDuplicates(ctx.pages, runId, { threshold });
+
     const issues: Issue[] = [];
-    // Cluster, never pairwise: O(n²) pair emission produced ~1M issues on a 1.2k-page catalog
-    // (books.toscrape) and blew the stack. Sort by wordCount per section, chain adjacent pages
-    // within the threshold into clusters (transitive — documented POC proxy), one issue per
-    // member with capped peer evidence.
-    const bySection = new Map<string, typeof ctx.pages>();
-    for (const page of ctx.pages) {
-      if (page.content.wordCount === 0) continue;
-      const section = sectionPrefix(pathnameOf(primaryUrl(page)));
-      if (!section) continue;
-      const list = bySection.get(section);
-      if (list) list.push(page);
-      else bySection.set(section, [page]);
-    }
-    for (const pages of bySection.values()) {
-      const sorted = [...pages].sort((a, b) => a.content.wordCount - b.content.wordCount);
-      let cluster: typeof sorted = [];
-      const flush = (): void => {
-        if (cluster.length < 2) {
-          cluster = [];
-          return;
-        }
-        // Skip members that are exact dups of another member — exact-dup rule's job.
-        const hashes = new Map<string, number>();
-        for (const m of cluster) hashes.set(m.content.contentHash, (hashes.get(m.content.contentHash) ?? 0) + 1);
-        const members = cluster.filter((m) => (hashes.get(m.content.contentHash) ?? 0) === 1);
-        if (members.length >= 2) {
-          for (const page of members) {
-            const peers = members.filter((m) => m !== page).slice(0, 5);
-            issues.push({
-              ruleId: nearDuplicateContentMeta.id,
-              category: nearDuplicateContentMeta.category,
-              severity,
-              scope: "site",
-              url: primaryUrl(page),
-              pageId: pageIdFor(page.normalizedUrl),
-              message: `Near-duplicate wordCount cluster of ${members.length} pages in this section (this page: ${page.content.wordCount} words)`,
-              howToFix: nearDuplicateContentMeta.howToFix,
-              threshold: `adjacent wordCount delta <= ${pct}% within section`,
-              evidence: [
-                { field: "content.wordCount", value: page.content.wordCount },
-                ...peers.map((m) => ({ field: "content.wordCount", value: m.content.wordCount, pageId: pageIdFor(m.normalizedUrl) })),
-              ],
-            });
-          }
-        }
-        cluster = [];
-      };
-      for (const page of sorted) {
-        const prev = cluster[cluster.length - 1];
-        if (!prev) {
-          cluster.push(page);
-          continue;
-        }
-        const wa = prev.content.wordCount;
-        const wb = page.content.wordCount;
-        const deltaPct = (Math.abs(wa - wb) / Math.max(wa, wb)) * 100;
-        if (deltaPct <= pct) cluster.push(page);
-        else {
-          flush();
-          cluster.push(page);
-        }
+    for (const clusterEntry of report.clusters) {
+      for (const member of clusterEntry.members) {
+        const page = ctx.pages.find((p) => pageIdFor(p.normalizedUrl) === member.pageId);
+        if (!page) continue; // defensive; pageId always derives from a ctx.pages entry
+        const peers = clusterEntry.members.filter((m) => m.pageId !== member.pageId);
+        const pct = Math.round(clusterEntry.similarity * 100);
+        issues.push({
+          ruleId: nearDuplicateContentMeta.id,
+          category: nearDuplicateContentMeta.category,
+          severity,
+          scope: "site",
+          url: primaryUrl(page),
+          pageId: member.pageId,
+          message: `Content is ~${pct}% similar (estimated Jaccard) to ${peers.length} other page(s): ${peers.map((p) => p.url).join(", ")}`,
+          howToFix: nearDuplicateContentMeta.howToFix,
+          threshold: `estimated Jaccard similarity >= ${threshold} (5-word shingles, MinHash + LSH banding)`,
+          evidence: [
+            { field: "content.contentHash", value: page.content.contentHash },
+            { field: "content.wordCount", value: page.content.wordCount },
+            ...peers.map((p) => ({ field: "content.wordCount", value: p.wordCount, pageId: p.pageId })),
+          ],
+        });
       }
-      flush();
     }
     return issues;
   },

@@ -20,7 +20,12 @@ export interface AnalysisConfig {
     lowTextRatio: number;
     slowPageMs: number;
     redirectChainMax: number;
+    /** @deprecated Superseded by nearDupSimilarity (slice C3: real MinHash/Jaccard similarity).
+     * Left in place, unread by near-duplicate-content — another slice/config may still reference it. */
     nearDupWordCountDeltaPct: number;
+    /** Jaccard similarity threshold (0..1) near-duplicate-content clusters at (slice C3). Optional
+     * so pre-C3 configs still validate; the rule falls back to similarity.ts's own default (0.75). */
+    nearDupSimilarity?: number;
     weakInlinkCount: number;
   };
 }

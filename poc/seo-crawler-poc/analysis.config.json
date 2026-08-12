@@ -12,7 +12,8 @@
     "lowTextRatio": "General SEO-tooling guidance range for low text-to-HTML ratio (10-25%); no single canonical Screaming Frog figure, documented POC judgment call at the low end",
     "slowPageMs": "Brief §6b seed default (2000ms); matches commonly-cited informal 'slow page' response-time bucket used by SEO crawlers",
     "redirectChainMax": "Screaming Frog 'Redirect Chains' report flags any chain longer than 1 hop",
-    "nearDupWordCountDeltaPct": "spec.md A4 scope: wordCount proximity <=5% as the POC near-dup proxy (minhash is Tier 2)",
+    "nearDupWordCountDeltaPct": "DEPRECATED (slice C3): superseded by nearDupSimilarity, a real MinHash/Jaccard score. Left as-is, no longer read by near-duplicate-content.",
+    "nearDupSimilarity": "slice C3: 5-word-shingle MinHash+LSH estimated Jaccard threshold. 0.75, not the originally-planned 0.9 -- the seeded near-dup fixture pair (/blog/winter-hiking-checklist vs /blog/winter-day-hike-checklist, manifest #18) measures ~0.824 true Jaccard at shingle size 5, so 0.9 would silently miss it; 0.75 leaves margin below that measurement while staying well above the near-zero overlap unrelated same-length pages produce.",
     "weakInlinkCount": "spec.md A4 scope: pages with exactly 1 inlink are 'weakly-linked'"
   },
   "rules": {},
@@ -28,6 +29,7 @@
     "slowPageMs": 2000,
     "redirectChainMax": 1,
     "nearDupWordCountDeltaPct": 5,
+    "nearDupSimilarity": 0.75,
     "weakInlinkCount": 1
   }
 }
