@@ -24,9 +24,16 @@ export function defaultSafety(auth: CrawlAuth | null | undefined): CrawlSafety {
   return { excludePatterns: [], denyLogout: authenticated, denyDestructive: authenticated };
 }
 
+/**
+ * C1 fix (live-verified via authenticated E2E crawl): pathname-only matching let a query-string-only
+ * bait — "/api/session?action=logout" — evade the /logout pattern entirely while a decoy plain
+ * "/logout" link got caught; the crawler followed the real one and actually logged itself out.
+ * Including the search string closes that gap for every authenticated crawl, not just form-login.
+ */
 function pathOf(normalizedUrl: string): string {
   try {
-    return new URL(normalizedUrl).pathname.toLowerCase();
+    const u = new URL(normalizedUrl);
+    return (u.pathname + u.search).toLowerCase();
   } catch {
     return normalizedUrl.toLowerCase();
   }

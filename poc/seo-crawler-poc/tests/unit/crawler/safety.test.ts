@@ -152,3 +152,24 @@ describe("authHeaders", () => {
     expect(headers.Authorization).toBe("Bearer token123");
   });
 });
+
+// Regression: the guard originally matched against the pathname only, so a logout expressed as a
+// query parameter slipped through and a live authenticated crawl really did log itself out.
+describe("logout links expressed as query parameters", () => {
+  const strict = safetyOf({ denyLogout: true, denyDestructive: true });
+
+  it("catches /api/session?action=logout, not just a bare /logout path", () => {
+    const hit = checkSafety("http://site.test/api/session?action=logout", "http://site.test/members", strict);
+    expect(hit).not.toBeNull();
+    expect(hit!.reason).toBe("logout");
+  });
+
+  it("still catches the plain path form", () => {
+    expect(checkSafety("http://site.test/logout", null, strict)?.reason).toBe("logout");
+  });
+
+  it("does not fire on ordinary query strings", () => {
+    expect(checkSafety("http://site.test/blog?page=2", null, strict)).toBeNull();
+    expect(checkSafety("http://site.test/search?q=how+to+cancel+later", null, safetyOf({ denyLogout: true }))).toBeNull();
+  });
+});
