@@ -1,4 +1,4 @@
-import { LayoutGrid, History, FileText, AlertTriangle, Map, ShieldAlert, type LucideIcon } from "lucide-react";
+import { LayoutGrid, History, FileText, AlertTriangle, Map, ShieldAlert, GitCompare, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -27,6 +27,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/failures", label: "Failures & Blocked", icon: AlertTriangle },
       { href: "/sitemap", label: "Sitemap & Robots", icon: Map },
       { href: "/issues", label: "Issues", icon: ShieldAlert },
+      { href: "/compare", label: "Compare", icon: GitCompare },
     ],
   },
 ];
@@ -39,6 +40,7 @@ export const ROUTE_TITLES: { test: (path: string) => boolean; title: string }[] 
   { test: (p) => p === "/failures", title: "Failures & Blocked" },
   { test: (p) => p === "/sitemap", title: "Sitemap & Robots" },
   { test: (p) => p === "/issues", title: "Issues" },
+  { test: (p) => p === "/compare", title: "Compare" },
 ];
 
 export function titleForPath(pathname: string): string {

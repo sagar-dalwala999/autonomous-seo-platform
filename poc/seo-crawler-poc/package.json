@@ -10,7 +10,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "bench": "tsx scripts/bench.ts",
-    "analyze": "tsx src/analysis/cli.ts"
+    "analyze": "tsx src/analysis/cli.ts",
+    "diff": "tsx src/diff/cli.ts",
+    "graph": "tsx src/graph/cli.ts"
   },
   "dependencies": {
     "cheerio": "^1.0.0",
