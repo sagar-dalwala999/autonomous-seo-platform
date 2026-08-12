@@ -1,0 +1,234 @@
+<!doctype html><html><head><meta charset='utf-8'><style>
+@page { size: A4; margin: 17mm 15mm; }
+* { box-sizing: border-box; }
+body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; color: #374151;
+       line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; }
+.title { color: #1E3A8A; font-size: 24pt; font-weight: bold; margin: 0 0 2pt 0; }
+.subtitle { color: #DC2626; font-size: 11pt; font-weight: bold; letter-spacing: .4px;
+            text-transform: uppercase; margin: 0 0 4pt 0; }
+.tagline { color: #6B7280; font-size: 9.5pt; font-style: italic; border-bottom: 2.5px solid #1E3A8A;
+           padding-bottom: 8pt; margin: 0 0 14pt 0; }
+h2 { font-size: 14pt; color: #1E3A8A; border-bottom: 1.5px solid #DBEAFE; padding-bottom: 3pt;
+     margin: 20pt 0 6pt 0; page-break-after: avoid; }
+h2 .num, h3 .num { color: #DC2626; margin-right: 8pt; }
+h3 { font-size: 12pt; color: #1E3A8A; margin: 13pt 0 4pt 0; page-break-after: avoid; }
+h4 { font-size: 11pt; color: #111827; margin: 10pt 0 4pt 0; page-break-after: avoid; }
+p { margin: 0 0 6pt 0; }
+p > strong:first-child, li > strong:first-child { color: #1E3A8A; }
+strong { color: #111827; }
+a { color: #1D4ED8; text-decoration: underline; word-break: break-all; }
+ul, ol { margin: 2pt 0 8pt 0; padding-left: 22pt; }
+li { margin: 0 0 3pt 0; }
+li.sub { list-style: none; margin-left: 14pt; }
+li.sub::before { content: "\2013\00a0\00a0"; color: #6B7280; }
+code { font-family: Consolas, monospace; font-size: 9pt; color: #111827;
+       background: #F3F4F6; padding: 0 2px; border-radius: 2px; }
+pre { font-family: Consolas, monospace; font-size: 8pt; line-height: 1.25; color: #111827;
+      background: #F3F4F6; border: 1px solid #D9DEE7; padding: 8pt 10pt; margin: 4pt 0 10pt 0;
+      white-space: pre; overflow: hidden; page-break-inside: avoid; }
+table { border-collapse: collapse; width: 100%; margin: 4pt 0 10pt 0; font-size: 9pt; }
+th { background: #1E3A8A; color: #fff; font-weight: bold; text-align: left; }
+th, td { border: 1px solid #D9DEE7; padding: 4pt 6pt; vertical-align: top; }
+tr:nth-child(odd) > td { background: #F3F6FB; }
+td:first-child { font-weight: bold; color: #111827; }
+tr { page-break-inside: avoid; }
+blockquote { background: #DBEAFE; color: #111827; margin: 6pt 0 10pt 0; padding: 8pt 12pt;
+             border: none; page-break-inside: avoid; }
+p.src { font-size: 8.5pt; color: #6B7280; margin: 0 0 1.5pt 0; }
+p.src b { color: #6B7280; }
+hr { border: none; margin: 4pt 0; }
+</style></head><body><p class="title">Requirements Analysis — Autonomous SEO Optimization &amp; Automation Platform</p>
+<p class="tagline">Document 01 of 07 · Prepared from the client problem statement ("Autonomous SEO Optimization Platform", 23 pp.) · Status: Draft for review</p>
+<h2><span class="num">1</span>Purpose of this document</h2>
+<p>This document decomposes the client's problem statement into an explicit, numbered set of requirements, constraints, and open questions. Every subsequent deliverable (feasibility, architecture, technology comparison, API research, risk assessment, MVP plan) traces back to the requirement IDs defined here, so the client can verify nothing in the problem statement was dropped or reinterpreted silently.</p>
+<h2><span class="num">2</span>What the client is actually asking for</h2>
+<p>Three readings of the problem statement matter, and they change what "done" means:</p>
+<ol>
+<li><strong>The product is autonomy, not analysis.</strong> The statement says explicitly: <em>"The developer's responsibility is not to simply build an SEO audit tool"</em> and the final objective is an <em>"Autonomous SEO Optimization Engine, not merely an SEO reporting/dashboard application."</em> Detection and reporting are table stakes; the differentiating requirement is the system <strong>closing the loop itself</strong> — generating changes, validating them, applying the safe ones, measuring outcomes, and rolling back harm.</li>
+</ol>
+<ol>
+<li><strong>This phase is research and planning, not implementation.</strong> Section 25 opens with: <em>"The developer/team should NOT immediately start coding."</em> The graded output of this phase is a set of documents that answer feasibility and architecture with evidence, plus a validation plan (POCs) for the risky parts.</li>
+</ol>
+<ol>
+<li><strong>The central question is a boundary question.</strong> Section 26: <em>"What is the maximum level of SEO work that can realistically be automated without human intervention, and what technical architecture is required to achieve it safely?"</em> The client explicitly warns against assuming everything can be automated. A credible answer must place every SEO activity into one of four buckets — 100% automatable / mostly automatable / requires approval / should remain manual — <strong>with reasons</strong>. Overclaiming automation is a failure mode the client is testing for.</li>
+</ol>
+<h3>The operating loop the system must run</h3>
+<pre>Discover → Analyze → Identify → Decide → Optimize → Validate → Deploy → Monitor → Measure → Re-optimize</pre>
+<p>This loop is restated three times in the statement (§1, §18, §23), each time with the same safety shape: a confidence check before generation, validation before deployment, monitoring after deployment, and rollback as a first-class outcome — meaning the loop is a <strong>requirement on system behavior</strong>, not an illustration.</p>
+<h2><span class="num">3</span>Functional requirements</h2>
+<p>IDs are grouped by capability area. "Source" cites the problem-statement section.</p>
+<h3>FR-1 — Website discovery &amp; crawling (source §4)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-1.1</td><td>Crawl a complete website from a starting point, discovering URLs via links, sitemap.xml, and robots.txt.</td></tr>
+<tr><td>FR-1.2</td><td>For every page, capture: URL, HTTP status, redirect target(s), canonical URL, title, meta description, H1/H2/H3, images and alt text, internal links, external links, structured data, noindex/nofollow directives, page content, word count, page depth, and page-load information.</td></tr>
+<tr><td>FR-1.3</td><td>Detect duplicate content across pages.</td></tr>
+<tr><td>FR-1.4</td><td>Prevent duplicate crawling of the same logical URL (normalization of parameters, case, trailing slashes).</td></tr>
+<tr><td>FR-1.5</td><td>Support very large websites (100,000+ pages) without unbounded memory/cost.</td></tr>
+<tr><td>FR-1.6</td><td>Run crawls as queued, schedulable jobs; support distributed execution.</td></tr>
+<tr><td>FR-1.7</td><td>Persist crawl results durably for downstream analysis and historical comparison.</td></tr>
+</table>
+<h3>FR-2 — Website understanding (source §5)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-2.1</td><td>Model the site as a connected structure — pages, categories, products, blog, topics, keywords, internal links, inter-page relationships — not as independent pages.</td></tr>
+<tr><td>FR-2.2</td><td>Answer: which pages are important; which target similar keywords; which compete with each other (cannibalization); which are orphaned; which receive the most traffic; which have weak internal linking; which should receive more internal links.</td></tr>
+<tr><td>FR-2.3</td><td>Justify the storage/technology choice (document DB, search engine, graph DB, vector DB, or combination).</td></tr>
+</table>
+<h3>FR-3 — Technical SEO detection (source §6)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-3.1</td><td>Indexing: detect noindex pages, robots.txt blocking, canonical problems, sitemap problems (missing pages, dead URLs), duplicate URLs, HTTP/HTTPS inconsistencies, WWW/non-WWW inconsistencies.</td></tr>
+<tr><td>FR-3.2</td><td>HTTP: detect 404, 410, 301, 302, redirect chains, redirect loops, 5xx.</td></tr>
+<tr><td>FR-3.3</td><td>On-page: detect missing/duplicate/over-long/too-short titles; missing/duplicate meta descriptions; missing/multiple H1; heading-hierarchy violations.</td></tr>
+<tr><td>FR-3.4</td><td>Links: detect broken links, broken internal links, orphan pages, excessive link counts, weakly linked pages.</td></tr>
+<tr><td>FR-3.5</td><td>Images: detect missing alt, oversized files, unsupported formats, missing dimensions, performance problems.</td></tr>
+<tr><td>FR-3.6</td><td>Structured data: detect missing schema, invalid schema, incorrect schema type, missing important properties.</td></tr>
+<tr><td>FR-3.7</td><td>Classify every detectable issue by whether it can safely be fixed automatically.</td></tr>
+</table>
+<h3>FR-4 — AI optimization engine (source §7)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-4.1</td><td>Generate: SEO titles, meta descriptions, H1, H2 structure, image alt text, content improvements, content-gap fills, FAQs where genuinely useful, internal-link suggestions, structured data.</td></tr>
+<tr><td>FR-4.2</td><td><strong>The AI must not blindly rewrite content</strong> — edits are bounded, targeted, and justified.</td></tr>
+<tr><td>FR-4.3</td><td>AI input is a structured context pack: current page, target keyword, search intent, current ranking, GSC data, competitor information, existing headings, existing content, missing topics, existing internal links, business context.</td></tr>
+<tr><td>FR-4.4</td><td>AI output is a structured action (machine-parseable), e.g. <code>{action, oldValue, newValue, reason, confidence, risk}</code> — with a researched mechanism for enforcing reliable structured output.</td></tr>
+</table>
+<h3>FR-5 — Keyword intelligence (source §8)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-5.1</td><td>Automatically discover and prioritize keywords from: GSC, Bing Webmaster Tools, keyword APIs, SERP APIs, search suggestions, competitor analysis, and existing site content.</td></tr>
+<tr><td>FR-5.2</td><td>Compute an <strong>SEO opportunity score</strong> via a defined, defensible algorithm (the statement's worked example: position 8.7 + 32,000 impressions + 2.1% CTR ⇒ HIGH opportunity).</td></tr>
+</table>
+<h3>FR-6 — Google Search Console integration (source §9)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-6.1</td><td>Collect per-property: queries, pages, clicks, impressions, CTR, average position, country, device, date.</td></tr>
+<tr><td>FR-6.2</td><td>Detect <strong>opportunity</strong> patterns automatically (high impressions + position 5–20 + low CTR).</td></tr>
+<tr><td>FR-6.3</td><td>Detect <strong>content decay</strong> automatically (e.g. position 4→13 with traffic 10,000→4,500) and trigger a content investigation.</td></tr>
+</table>
+<h3>FR-7 — Competitor analysis (source §10)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-7.1</td><td>For important keywords, automatically compare the customer page against ranking competitors on: title, H1, H2, content, topics, entities, questions, internal links, structured data, content depth.</td></tr>
+<tr><td>FR-7.2</td><td>Surface "what competitors cover that our page does not," then judge whether each gap is a <strong>genuine</strong> content opportunity (not blind copying).</td></tr>
+</table>
+<h3>FR-8 — Internal linking automation (source §11)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-8.1</td><td>Detect internal-link opportunities: source page mentions a concept; target page is the site's authority on it.</td></tr>
+<tr><td>FR-8.2</td><td>Propose a contextual anchor for each opportunity, with anchor-text variation.</td></tr>
+<tr><td>FR-8.3</td><td>Respect: semantic similarity, keyword/entity matching, page importance, link equity, existing links, maximum links per page.</td></tr>
+<tr><td>FR-8.4</td><td>Define when a link is auto-inserted vs only recommended.</td></tr>
+</table>
+<h3>FR-9 — Automated website modification (source §12) — flagged by the client as one of the most important parts</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-9.1</td><td>Next.js/React sites: modify via the code path — GitHub, branches, pull requests, code patches, API-based deployment.</td></tr>
+<tr><td>FR-9.2</td><td>WordPress sites: modify via the WordPress REST API and/or established SEO plugin APIs.</td></tr>
+<tr><td>FR-9.3</td><td>Shopify sites: modify via Shopify APIs (product/page metadata), within documented theme limitations.</td></tr>
+<tr><td>FR-9.4</td><td>Custom websites: a researched recommendation on direct code integration vs API integration vs another mechanism.</td></tr>
+</table>
+<h3>FR-10 — GitHub automation (source §13)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-10.1</td><td>Full pipeline: connect repo → create branch → analyze code → generate modification → apply patch → run tests → run build → run SEO validation → create PR → deploy.</td></tr>
+<tr><td>FR-10.2</td><td>Answer, with evidence: how changes are generated; how AI is prevented from breaking existing functionality; how generated changes are tested; how SEO changes are validated; how rollback works.</td></tr>
+</table>
+<h3>FR-11 — Confidence-based automation (source §14)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-11.1</td><td>A <strong>detailed scoring mechanism</strong> (explicitly demanded) mapping every proposed change to a risk tier.</td></tr>
+<tr><td>FR-11.2</td><td>Tier semantics fixed by the client: <strong>LOW</strong> → may auto-apply (missing alt, missing meta description, duplicate metadata, broken internal link, invalid JSON-LD). <strong>MEDIUM</strong> → automated PR/deployment with a gate (title, H1, content updates, internal links, schema changes). <strong>HIGH</strong> → never auto-deploy (robots.txt, large-scale canonicals, mass redirects, URL restructuring, page deletion).</td></tr>
+</table>
+<h3>FR-12 — Validation engine (source §15)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-12.1</td><td>Every automated change passes, pre-deployment: SEO validation → HTML validation → schema validation → application tests → build → performance test.</td></tr>
+<tr><td>FR-12.2</td><td>Each validation stage is itself automated (researched per stage).</td></tr>
+</table>
+<h3>FR-13 — Change tracking (source §16)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-13.1</td><td>Every change stored with complete history: change ID, page, change type, before, after, reason, confidence, risk, applied date, result.</td></tr>
+<tr><td>FR-13.2</td><td>The ledger is complete — no unrecorded mutations of a customer site, ever.</td></tr>
+</table>
+<h3>FR-14 — Automatic rollback (source §17)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-14.1</td><td>Detect negative impact via: ranking decline, CTR decline, organic-traffic decline, conversion decline, indexing problems, technical errors.</td></tr>
+<tr><td>FR-14.2</td><td>Decide KEEP vs ROLLBACK from predefined rules.</td></tr>
+<tr><td>FR-14.3</td><td>Define the evaluation wait window per change type — the client explicitly notes SEO effects are delayed, and expects the developer to define how long to wait.</td></tr>
+</table>
+<h3>FR-15 — Autonomous scheduling (source §18)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-15.1</td><td>The whole loop runs unattended on a schedule (daily in the statement's example).</td></tr>
+<tr><td>FR-15.2</td><td>The execution backbone (scheduled workers / agent framework / workflow engine / queue / LLM orchestration / custom state machine) is chosen by researched comparison, optimizing for <strong>reliability</strong>.</td></tr>
+</table>
+<h3>FR-16 — Platform surface (source §19)</h3>
+<table><tr><th>ID</th><th>Requirement</th></tr>
+<tr><td>FR-16.1</td><td>The architecture covers: frontend, API, authentication, project management, crawler, queue, SEO analyzer, AI engine, decision engine, optimization engine, validation engine, deployment engine, monitoring.</td></tr>
+<tr><td>FR-16.2</td><td>The proposal names concrete choices for: database, cache, queue, object storage, search engine, AI providers, external APIs, scheduler, logging, monitoring.</td></tr>
+</table>
+<h2><span class="num">4</span>Non-functional requirements</h2>
+<table><tr><th>ID</th><th>Requirement</th><th>Source</th></tr>
+<tr><td>NFR-1</td><td><strong>Safe</strong>: the system must never blindly modify production; every automation follows Detect → Analyze → Decide → Confidence Check → Generate → Validate → Apply → Monitor → Rollback-if-required.</td><td>§3, §23</td></tr>
+<tr><td>NFR-2</td><td><strong>Scalable</strong>: 100 → 10,000 → 100,000+ page sites, with cost estimated per tier.</td><td>§3, §21</td></tr>
+<tr><td>NFR-3</td><td><strong>Explainable</strong>: every action carries a reason, confidence, and risk; complete change history.</td><td>§3, §7, §16</td></tr>
+<tr><td>NFR-4</td><td><strong>Autonomous</strong>: capable of applying (safe) changes without a human in the loop.</td><td>§1, §3, §26</td></tr>
+<tr><td>NFR-5</td><td><strong>Secure</strong>: encrypted secrets and tokens; least-privilege scopes; OAuth; audit logs; access isolation; multi-tenant security. The system may hold write access to customer production repositories — security posture must match that responsibility.</td><td>§22</td></tr>
+<tr><td>NFR-6</td><td><strong>Cost-bounded</strong>: AI and crawling costs estimated and actively reduced by design.</td><td>§21</td></tr>
+<tr><td>NFR-7</td><td><strong>Justified</strong>: no technology selected without comparing 2–3 alternatives with reasons.</td><td>§20</td></tr>
+<tr><td>NFR-8</td><td><strong>Policy-compliant</strong>: design must consider Google/search-engine policy risk (e.g. scaled content abuse).</td><td>§25.6</td></tr>
+</table>
+<h2><span class="num">5</span>Hard constraints and mandates (verbatim commitments)</h2>
+<ol>
+<li><strong>Not an audit tool.</strong> Reporting-only is explicitly out of scope as an end state (§1, final objective).</li>
+<li><strong>Research before code.</strong> This phase produces documents and a POC plan, not the product (§25).</li>
+<li><strong>AI must not blindly rewrite content</strong> (§7).</li>
+<li><strong>The system must never blindly modify production</strong> (§23).</li>
+<li><strong>Risk-tier semantics are fixed by the client</strong> — LOW auto-apply / MEDIUM gated PR / HIGH never-auto lists are given, not negotiable defaults (§14).</li>
+<li><strong>The four-bucket automation matrix with reasons is mandatory</strong> (§26).</li>
+<li><strong>Every recommendation must be justified</strong> with compared alternatives (§20).</li>
+<li><strong>Change history must be complete</strong> (§16).</li>
+<li><strong>Rollback wait-windows must be explicitly defined</strong> (§17).</li>
+</ol>
+<h2><span class="num">6</span>MVP scope boundary (source §24)</h2>
+<p><strong>In scope (MVP):</strong></p>
+<ul>
+<li>Site platforms: <strong>Next.js, React, WordPress</strong>.</li>
+<li>SEO surface: technical SEO, titles, meta descriptions, headings, image alt, internal links, schema, sitemap, canonical, broken links.</li>
+<li>Data: <strong>Google Search Console</strong> (sole external data source for MVP).</li>
+<li>Automation: GitHub, automated PR, validation, deployment, rollback.</li>
+<li>AI: SEO analysis, content-gap analysis, metadata optimization, internal-link optimization.</li>
+</ul>
+<p><strong>Explicitly deferred beyond MVP (mentioned in the statement but outside §24):</strong></p>
+<ul>
+<li>Shopify and fully custom platforms (research still required — FR-9.3/9.4).</li>
+<li>Bing Webmaster Tools, third-party keyword/SERP APIs as data sources.</li>
+<li>Conversion-based rollback signals (requires analytics integration).</li>
+<li>Content-writing at scale (MVP touches metadata, headings, links, schema — not long-form generation).</li>
+</ul>
+<h2><span class="num">7</span>Success criteria (source: Success Criteria section)</h2>
+<p>The project is successful when this flow is demonstrable end-to-end on a connected site:</p>
+<p>connect → crawl → understand → find problems → find opportunities → AI determines improvements → generate changes → validate → <strong>automatically apply safe changes</strong> → monitor search data → measure results → keep winners → <strong>roll back harmful changes</strong> → find the next opportunity.</p>
+<p>Acceptance emphasis: the two bolded steps are what distinguish this system from an audit tool, and are therefore the highest-value proof points in any demo or POC.</p>
+<h2><span class="num">8</span>Deliverables contract for this phase (source §25)</h2>
+<table><tr><th>#</th><th>Deliverable</th><th>Status</th></tr>
+<tr><td>1</td><td>Feasibility document — "can this be automated to the desired level?"</td><td>Doc 02</td></tr>
+<tr><td>2</td><td>Architecture document — complete system architecture</td><td>Doc 03</td></tr>
+<tr><td>3</td><td>Technology comparison — alternatives + justified selections</td><td>Doc 04</td></tr>
+<tr><td>4</td><td>API research — GSC, GitHub, WordPress, Shopify, SERP/keyword, AI providers</td><td>Doc 05</td></tr>
+<tr><td>5</td><td>Proof-of-concept plan for the 8 named POCs (crawl; analyze; generate optimization; modify Next.js repo; build+validate; GitHub PR; read GSC; measure impact)</td><td>Doc 07 §POC</td></tr>
+<tr><td>6</td><td>Risk document — technical, SEO, AI, security, API limits, cost, scalability, search-engine policy</td><td>Doc 06</td></tr>
+<tr><td>7</td><td>MVP development plan — Epic → Module → Task → Acceptance Criteria</td><td>Doc 07</td></tr>
+</table>
+<p><em>Note: per the current engagement scope, POCs are </em><em>planned and specified</em><em> in Doc 07 (with exit criteria and risk coverage per POC) rather than executed in this phase.</em></p>
+<h2><span class="num">9</span>Key tensions the plan must resolve (analysis)</h2>
+<p>These are the places where requirements pull against each other; the feasibility and architecture documents must take an explicit position on each:</p>
+<ol>
+<li><strong>Autonomy vs safety.</strong> Full autonomy (§1) collides with "never blindly modify production" (§23). Resolution shape: autonomy is <em>earned per action class</em> via the risk-tier system — the automation matrix (§26) is the honest boundary, and "requires approval" is a legitimate permanent state for some actions, not a failure.</li>
+<li><strong>Measurement latency vs a daily loop.</strong> The agent runs daily (§18), but change effects take weeks to be measurable (§17) and GSC data itself lags. The architecture needs per-change monitoring windows running <em>in parallel</em> with new work, plus discipline to avoid re-touching a page whose last change is still under evaluation.</li>
+<li><strong>Attribution in a noisy system.</strong> Rankings move without our changes (algorithm updates, competitors, seasonality). KEEP/ROLLBACK rules based on raw before/after deltas will misfire; the design needs controls (unchanged comparison pages, year-over-year baselines, minimum-data thresholds) and must accept attribution is probabilistic.</li>
+<li><strong>AI helpfulness vs AI risk.</strong> The biggest quality lever (LLM-generated improvements) is also the biggest safety and policy risk (hallucinated claims, scaled-content-abuse exposure, prompt injection from crawled third-party content). Bounded structured actions (FR-4.4) are the containment mechanism.</li>
+<li><strong>Depth of platform write-access vs blast radius.</strong> Deeper integration (repo write, CMS write) enables autonomy but raises the cost of a defect. Least-privilege scoping and the validation pipeline are the counterweights; security (NFR-5) is a product requirement, not an ops afterthought.</li>
+<li><strong>Cost vs freshness.</strong> Continuous recrawls and AI analysis of 100k pages daily is cost-prohibitive; the design needs prioritized/incremental recrawl and model tiering while still honoring "continuously monitor" (§1).</li>
+</ol>
+<h2><span class="num">10</span>Open questions for the client</h2>
+<p>Answers change the design; assumptions used in the meantime are stated in each doc.</p>
+<ol>
+<li><strong>Multi-tenancy</strong>: is this an internal tool for a known set of sites, or a SaaS product onboarding third-party customers? (Drives auth, isolation, GSC OAuth verification effort, and security posture. Current working assumption: multi-tenant SaaS, since §22 mentions customer data and customer repositories.)</li>
+<li><strong>Approval surface</strong>: for MEDIUM-risk changes, who merges the PR — the customer's developers or an operator of the platform? (Drives notification/UX requirements.)</li>
+<li><strong>Conversion data</strong>: rollback signals include conversion decline (§17) — which analytics source, if any, will be available? (MVP assumption: GSC-only signals.)</li>
+<li><strong>Rankings source</strong>: "check rankings" (§18) beyond GSC average position implies a rank tracker or SERP API — is third-party SERP data acceptable at MVP, given cost and ToS considerations? (MVP assumption: GSC position data only; SERP APIs deferred.)</li>
+<li><strong>Content authorship boundary</strong>: for "content improvements / content gaps / FAQs" (§7), may the system draft body content into a PR for human review, or only metadata/structural changes? (Assumption: drafts allowed at MEDIUM tier, always human-merged.)</li>
+<li><strong>Target hosting</strong>: are Next.js customers assumed on Vercel (instant-rollback APIs available) or arbitrary hosts? (Assumption: Vercel-first, generic Git-revert fallback.)</li>
+</ol>
+<h2><span class="num">11</span>Traceability</h2>
+<p>Every subsequent document cites the FR/NFR IDs above. The feasibility matrix (Doc 02) covers each FR area with an automation-level verdict; the architecture (Doc 03) maps components to the FRs they serve; risks (Doc 06) reference the requirement they threaten; the MVP plan (Doc 07) decomposes FR-by-FR into epics, modules, tasks, and acceptance criteria.</p></body></html>

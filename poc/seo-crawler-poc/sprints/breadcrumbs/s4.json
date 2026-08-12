@@ -1,0 +1,21 @@
+{
+  "slice": "S4-crawler-core",
+  "started_at": "2026-08-11T10:20:00Z",
+  "status": "completed",
+  "ended_at": "2026-08-11T10:40:00Z",
+  "done_so_far": [
+    "src/index.ts: node:util parseArgs CLI, all flags per spec (--max-pages, --concurrency, --no-robots, --render, --out, --alias, --rps, --run-id, --help), default rps (10 local/2 remote), default run-id <hostname>-<yyyymmdd-hhmmss>, exit codes 0/1/2",
+    "src/crawler/crawl.ts: runCrawl() full orchestration - robots fetch (always, evidence) -> alias-remap robots.sitemaps before discoverSitemaps (plan-review round-2 fix) -> sitemap entry seeding (remap->normalize->isInScope->robots gate) -> single considerUrl() gate reused by every discovery path (caps/scope/robots/dedup+source-merge) -> CheerioCrawler primary pass with self-recursive html-link enqueue -> auto-mode outer loop alternating cheerio pass <-> playwright escalation pass (toRenderThisPass Map collected during cheerio pass, consumed after it finishes, newly-discovered rendered-DOM links feed the NEXT cheerio pass rather than self-enqueuing into playwright) -> never mode = cheerio-only single pass -> always mode = playwright-only self-recursive single pass -> failedRequestHandler classifies timeout/dns/redirect-loop/parse-error/other -> non-2xx pages get both a CrawledPage AND a FailureRecord -> non-HTML content-type gets FailureRecord 'other', no extraction -> saveBlocked/saveReport at the end",
+    "Redirect chain: Cheerio pass uses a manual fetch(redirect:'manual') hop-by-hop walk (got's response.redirectUrls only gives URLs, no per-hop status) capped at 8 hops, sentinel statusCode=0 if a hop trace fails (never fabricates a plausible-looking 3xx). Playwright pass uses native request.redirectedFrom() chain walk - real per-hop status for free, no extra fetch.",
+    "responseTimeMs: Cheerio uses got's response.timings.phases.total (real, confirmed typed and populated in a live run). Playwright measures via a preNavigationHooks timestamp stashed on request.userData.",
+    "verified live (not just tsc): npm run crawl -- --help (exit 0, prints usage), missing-URL path (exit 1), a real end-to-end crawl of http://example.com (renderedWith:http, redirectChain:[], correct summary/report.json), a real crawl of https://quotes.toscrape.com/js/ (redirect chain captured a REAL 308 hop, correct evidence), and --render always against example.com forcing a real Playwright pass (JS rendered: 1 in the summary, renderedWith:playwright saved correctly) - confirms my Playwright orchestration path works end-to-end independent of S7's detection heuristic.",
+    "test storage/runs/* artifacts deleted before returning; storage/ is gitignored anyway"
+  ],
+  "next_step": "none - slice complete. Main Claude integration note: on a live run against quotes.toscrape.com/js/ (wordCount=4, textbook CSR app-shell), needsJsRendering (S7, src/detection/needsJsRendering.ts) returned needed:false and did NOT escalate, contradicting spec.md S7's own stated goal for that exact fixture shape. This is outside my ownership (do_not_touch) - flagging for integration/QA, not fixed here.",
+  "dead_ends": [
+    {
+      "tried": "First live test run (render:auto, example.com, max-pages 2) showed a stray 'PlaywrightCrawler: Starting the crawler... Total 0 requests' log even though toRenderThisPass should have been empty for example.com.",
+      "why_it_failed": "Did not reproduce on a clean re-run (same URL, same flags) or on the more realistic quotes.toscrape.com/js/ case, where the playwright pass correctly did not start at all when toRenderThisPass was empty. Most likely stale on-disk Crawlee storage from an earlier bootstrap/smoke-test process, not a logic bug - re-verified my considerUrl/toRenderThisPass gating by re-reading the code and confirming the CSR-page run behaved exactly as the code dictates. Not chasing further; noting it here in case it recurs during integration so Main Claude doesn't waste time re-diagnosing from scratch."
+    }
+  ]
+}

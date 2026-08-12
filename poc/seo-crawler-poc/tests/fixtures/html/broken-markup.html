@@ -1,0 +1,9 @@
+<!-- malformed markup: unclosed inline tags, missing closing body/html, empty JSON-LD — must never throw -->
+<html>
+<head><title>Broken Markup</title></head>
+<body>
+<h1>Heading with <span>unclosed span</h1>
+<p>Paragraph text without closing tag
+<img src="/img/no-close.jpg" alt="no closing tag">
+<script type="application/ld+json"></script>
+<a href="/next">next</a>

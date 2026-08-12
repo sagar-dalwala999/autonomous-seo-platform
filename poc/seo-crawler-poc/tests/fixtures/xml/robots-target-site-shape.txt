@@ -1,0 +1,5 @@
+# seeded: blocks the legitimate /guides/ section (manifest #13)
+User-agent: *
+Disallow: /guides/
+
+Sitemap: https://summittrailgear.example/sitemap.xml

@@ -1,0 +1,37 @@
+{
+  "slice": "A2 — crawler-capture-v2",
+  "started_at": "2026-08-12T05:00:00Z",
+  "status": "completed",
+  "ended_at": "2026-08-12T05:35:00Z",
+  "done_so_far": [
+    "KEPT_HEADERS extended with security headers + content-encoding (src/crawler/crawl.ts)",
+    "httpVersion threaded through FetchArtifact for both Cheerio (response.httpVersion) and Playwright (response.httpVersion() best-effort) passes",
+    "RunStore.saveStaticRaw + RunStore.saveExternalChecks added (extend-only, byte-compatible)",
+    "Escalation map extended to EscalationCandidate {signals, staticHtml, staticExtraction} carried from the Cheerio pass's own locals (no re-read from disk)",
+    "renderDivergence computed in the PW requestHandler before it overwrites raw/<id>.html + pages/<id>.json; buildCrawledPage takes an optional renderDivergence param (default null)",
+    "--check-external CLI flag wired end-to-end: index.ts parses it, runCrawl(options, checkExternal) does capped/rps-limited HEAD checks, writes external-links.json",
+    "npx tsc --noEmit clean; npx vitest run 161/161 green (grew from 123 baseline via concurrent A1 work, none touched by A2)",
+    "Real run quotes.toscrape.com/js --max-pages 5 (run a2-verify-quotesjs): 2 escalated pages, both with raw/<id>.static.html + real non-null renderDivergence",
+    "Real run localhost:3105 --no-robots --max-pages 10 --check-external, NO alias (run a2-verify-targetsite-noalias): external-links.json with 4 real HEAD-check results"
+  ],
+  "next_step": "none — slice complete, ready for integration",
+  "dead_ends": [
+    {
+      "tried": "Running the target-site --check-external verification WITH --alias summittrailgear.example,www.summittrailgear.example",
+      "why_it_failed": "the alias makes summittrailgear.example links count as internal (in-scope), so external links = 0 and --check-external has nothing to check. Re-ran without --alias per the dispatch note ('with the alias NOT set they're external') and got the intended 4 external targets."
+    }
+  ],
+  "divergence_carry_decision": "Extended the toRender Map<string,string[]> to Map<string,EscalationCandidate> where EscalationCandidate = {signals, staticHtml: string|null, staticExtraction: ExtractionResult|null}. Populated from the Cheerio requestHandler's own already-computed html/extraction locals for (a) real JS-detection escalations and (b) 403/429 fetch-retry escalations (both have a genuine static body). Left null for pure network-failure retries (timeout/DNS never received a response, so there is nothing to diff). Chose 'carry in the map' over 're-read the saved static file' to avoid an extra disk read and because the static extraction was already sitting in scope.",
+  "files_touched": [
+    "src/crawler/crawl.ts",
+    "src/storage/runStore.ts",
+    "src/index.ts",
+    "WORK_LOG.md"
+  ],
+  "do_not_touch_respected": [
+    "src/extraction/** (untouched, called extractPage as-is)",
+    "src/analysis/** (untouched)",
+    "src/models/types.ts (untouched — checkExternal threaded as a 2nd runCrawl param instead)",
+    "tests/** (no tests added)"
+  ]
+}

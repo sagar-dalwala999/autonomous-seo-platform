@@ -1,0 +1,34 @@
+{
+  "slice": "s14-overview-secondary-views",
+  "started_at": "2026-08-11T00:00:00Z",
+  "ended_at": "2026-08-11T21:00:00Z",
+  "status": "completed",
+  "done_so_far": [
+    "lib/data-overview.ts: kpi() now returns sentiment (good/bad/neutral) decoupled from direction -- fixes the lower-is-better delta-pill color bug for avg response time",
+    "components/overview/kpi-strip.tsx: local KpiTrendPill renders from sentiment (does not touch do-not-touch components/ui/delta-pill.tsx); all 4 KPI values linked to filtered /pages destinations",
+    "components/overview/action-cards.tsx: value is now a link (same href as CTA); bento asymmetry (coverage card spans 2/4 cols) + CoverageBar visual",
+    "components/overview/coverage-bar.tsx: new shared visual, used by action-cards + runs list",
+    "components/charts/hex-matrix.tsx: legend rows linked to /pages?status=<class> or /failures for blocked",
+    "components/charts/dot-matrix-timeline.tsx: added runId prop; HTTP/Playwright legend + total value linked to /pages?rendered=<mode>",
+    "components/overview/work-queue-table.tsx: row URL text now also links to the same evidence target as the CTA",
+    "app/page.tsx: bento chart grid (hex 3/5, timeline 2/5 at lg), threaded runId into KpiStripView + DotMatrixTimeline",
+    "app/failures/page.tsx: groups (incl. blocked-by-robots) converted to native <details>/<summary> collapsible groups; every failure/blocked row links to its page record via findPageIdByUrl or shows 'never crawled'",
+    "app/sitemap/page.tsx: CrossRefList now shows an explicit never-crawled/no-page-match badge when a row has no page link",
+    "app/runs/page.tsx: full rewrite -- startUrl, duration (computed), maxDepth (computed via getPages per run), coverage bar, pages/failed/blocked chips, every cell links to /?run=<id>",
+    "app/new-crawl/page.tsx: maxPages clamp 300->1000, helper text added",
+    "lib/crawl-runner.ts: the one permitted line -- Math.min(300,...) -> Math.min(1000,...) in validate()",
+    "npm run build: clean (0 errors, only 3 pre-existing tracing warnings unrelated to this slice)",
+    "Verified live on localhost:3104 in both themes via Playwright: 5+ click-through pairs confirmed landing on correctly pre-filtered destinations (status= and rendered= ARE honored by S13's /pages; sort=/dir= are NOT yet wired -- flagged, not blocking)",
+    "Zero console errors in every check after the one build-collision false alarm (S13 rebuilding the shared non-worktree directory mid-test corrupted a chunk hash; rebuild+restart fixed it, confirmed not my code)"
+  ],
+  "next_step": "none -- slice complete",
+  "dead_ends": [
+    {
+      "tried": "assuming /pages honors ?status=/?rendered=/?sort= from the URL when first writing links",
+      "why_it_failed": "app/pages/page.tsx + PagesExplorerClient only read initialQ from the URL; status/rendered/sort were pure local useState. S13 wired status+rendered live during the session (confirmed working by re-test); sort/dir are still unwired as of this slice's completion -- links navigate correctly but don't pre-sort. Not my file to fix (do_not_touch: app/pages/**, components/explorer/**)."
+    }
+  ],
+  "notes": [
+    "This is a shared (non-worktree) directory -- S13's concurrent `npm run build` corrupted a running `next start` server's chunk hashes mid-Playwright-test, producing a real but misleading ChunkLoadError + 3 console errors. Root-caused via clean rebuild+restart which fixed it immediately. Flagging for Main Claude: concurrent Generators sharing one .next output directory is a real collision risk for any slice running `next start`/`next dev` mid-build."
+  ]
+}

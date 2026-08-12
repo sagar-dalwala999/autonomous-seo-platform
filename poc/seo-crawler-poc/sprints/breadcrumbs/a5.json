@@ -1,0 +1,21 @@
+{
+  "slice": "A5 — dashboard-issues-UI",
+  "started_at": "2026-08-12T05:30:00.000Z",
+  "ended_at": "2026-08-12T05:45:00.000Z",
+  "status": "completed",
+  "done_so_far": [
+    "lib/types.ts: additive IssueSeverity/IssueEvidence/Issue/AnalysisReport (mirrors crawler A4 types.ts)",
+    "lib/data-issues.ts: readAnalysisReport, groupIssuesByRule, findingsForPage, sectionForField (MF-5b), formatEvidenceValue",
+    "components/issues/: severity-badge, issues-summary-band, issues-filter-chips, rule-group-card, page-issues-panel",
+    "app/issues/page.tsx: /issues route with severity+category URL-state filters, honest empty states (no runs / not analyzed / clean run / no filter results)",
+    "surgical: components/overview/action-cards.tsx made async, self-fetches health score, adds 4th green 'SEO health score' card only when issues.json exists (falls back to original 4-col layout otherwise)",
+    "surgical: app/pages/[id]/page.tsx wires PageIssuesPanel as first panel using findingsForPage",
+    "surgical: lib/crawl-runner.ts post-crawl auto-analyze spawn (windowsHide, not detached, never fails crawl status) after exit 0/2",
+    "surgical (beyond literal dispatch list, judgment call documented in WORK_LOG): components/explorer/section-nav.tsx adds 'Issues' as first section id; components/shell/nav-config.ts adds Issues to sidebar nav + route title — both one-line additive changes needed so /issues and the page-detail Issues section are actually reachable/consistent with the rest of the app",
+    "npx tsc --noEmit clean; npm run build clean",
+    "Playwright verified both themes on :3103 against the temporarily-copied fixture (target-site-full/issues.json): /issues filters+groups+links, page-detail Issues section + jump link to #metadata (real match: pageId 0ee65adde711, robots-noindex), Overview health card present/absent correctly, not-analyzed empty state, clean-run celebration (via a second temporary synthetic zero-issue file on smoke-books, deleted after)",
+    "Both temporary fixture files deleted and confirmed gone; :3103 server stopped; Sagar's :3100 confirmed untouched and still running throughout"
+  ],
+  "next_step": "none — slice complete. When A4's real src/analysis/cli.ts + issues.json land, no A5 code changes are expected to be needed; recommend Main Claude do one live end-to-end smoke (real crawl -> real auto-analyze spawn -> /issues) once A4 merges, since today's verification used the fixture, not a live analyze run.",
+  "dead_ends": []
+}

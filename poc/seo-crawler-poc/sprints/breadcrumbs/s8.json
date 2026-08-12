@@ -1,0 +1,36 @@
+{
+  "slice": "S8-dashboard-scaffold",
+  "started_at": "2026-08-11T10:55:00Z",
+  "status": "completed",
+  "ended_at": "2026-08-11T11:12:00Z",
+  "done_so_far": [
+    "New Next.js 16 app at ../seo-dashboard (App Router, TS, Tailwind v4, no src-dir, @/* alias, --disable-git so no .git created). lucide-react added. dev/start scripts pinned to port 3100 (was free).",
+    "app/globals.css: design-dna §3 token table as CSS custom properties on :root/[data-theme=dark] + prefers-color-scheme fallback; @theme inline maps to Tailwind utilities (bg-card, text-secondary, rounded-card, shadow-popover, tabular-nums via Tailwind core). Renamed --text-primary -> Tailwind color 'foreground' and kept --primary -> 'primary' to avoid a utility-name collision (documented in the CSS).",
+    "No-flash theming: next/script beforeInteractive inline script + ThemeToggle (Light/Dark/System) in components/ui/theme-toggle.tsx, lib/theme.ts shared constant/resolver, live-swap verified via Playwright click, System listens to matchMedia changes.",
+    "App shell: components/shell/{sidebar,topbar,app-shell,nav-config,search-input,help-item}.tsx. Sidebar: brand block, search input with working '/' focus shortcut routing to /pages?q=, nav sections (Essentials/Crawl data) with real Runs badge, active=bordered pill, bottom Appearance/Help (clipboard-copy of the real POC-1-REPORT.md path, not a fake link)/user row. Topbar: route title table + lib/topbar-actions-context.tsx extensible right-slot for S9/S10. <1024px: icon rail + SlideOver nav drawer.",
+    "components/ui/slide-over.tsx: hand-rolled focus trap (no deps) + Esc + 50% scrim + createPortal to body; reused for both the future command-builder and the mobile nav drawer.",
+    "lib/data.ts: listRuns/getRun/getPages(status,rendered,q,sort,dir,limit,offset)/getPage/rawHtmlPath/getBench/resolveRunId/getReportPath. Verified on-disk shapes against src/storage/runStore.ts and scripts/bench.ts source directly (not guessed). Module-Map cache per runId. Defensive: readdir/JSON.parse failures caught, console.warn with a count, never throws — confirmed live (1 malformed run dir produced exactly one console.warn).",
+    "lib/types.ts: duplicated read-side copy of src/models/types.ts (header comment names the source of truth) — chose this over a cross-project relative type-only import for Next/Turbopack build robustness.",
+    "components/ui/{button,card,chip,badge,delta-pill,stat-value,skeleton,empty-state,table}.tsx — tokens only, zero raw hex, DeltaPill is icon+text (never color alone), Table has aria-sort + sticky header + 44px rows.",
+    "Route skeletons: app/{page,runs/page,pages/page,pages/[id]/page,failures/page,sitemap/page}.tsx — each one file, real data-layer calls, honest EmptyStates (no-runs shows the actual `npm run crawl --` command; Failures distinguishes 'no runs' from 'run is clean').",
+    "npm run build: clean compile + typecheck (one benign Turbopack output-tracing warning on the intentional CRAWLER_STORAGE_DIR dynamic path, documented inline, harmless for this non-deployed local POC).",
+    "Playwright verification (dev server on 3100, stopped before returning): 0 console errors/warnings across the whole session; light+dark incl. live toggle; 1440 / 1023 (icon-rail breakpoint) / 390 widths; no page-level horizontal scroll at 390 (confirmed via scrollWidth===clientWidth); Pages table horizontal overflow correctly scoped to its own card; mobile nav drawer opens, Esc closes it, focus restored to the trigger button (confirmed in the a11y snapshot); Inter font confirmed self-hosted (200 on the woff2, computed font-family includes Inter + the auto-generated 'Inter Fallback'); ran 2 real crawls (smoke-example, smoke-books) plus exercised ~24 pre-existing real runs from other slices (target-full, target-robots, redirect-loop, quotes-js, ...) through every route including a real seeded target-site page-detail and a real robots.txt/sitemap cross-ref render.",
+    "Screenshots saved to sprints/breadcrumbs/s8-screens/ (12 files: overview light/dark, runs, pages list w/150 real rows, page detail, failures w/ real 404s+blocked, sitemap w/ real robots.txt content, 1024 icon-rail, mobile nav drawer, 390 overview + pages table).",
+    "Fixed a real bug found during this pass (not just typecheck): getPages' sort comparator indexed depth/responseTimeMs as top-level CrawledPage fields when they are nested under crawl.depth/performance.responseTimeMs — replaced with an explicit sortValue() switch."
+  ],
+  "next_step": "none - slice complete. S9/S10 can build against: components/shell/* (shared, not owned by them - extend via lib/topbar-actions-context.tsx's useTopbarActions() rather than editing Topbar directly), lib/data.ts's exported functions, components/ui/* primitives. Overview (app/page.tsx), Pages/[id] and other route bodies are each a single file ready to be replaced wholesale.",
+  "dead_ends": [
+    {
+      "tried": "import \"server-only\" at the top of lib/data.ts to hard-enforce server-only usage",
+      "why_it_failed": "the server-only npm package isn't installed and isn't in the allowed dep list (next/react/tailwind/lucide-react only) - would have broken the build. Removed; enforced by a one-line comment + convention instead (every caller is a Server Component)."
+    },
+    {
+      "tried": "a relative type-only import of ../seo-crawler-poc/src/models/types.ts from lib/types.ts instead of duplicating",
+      "why_it_failed": "didn't actually try it live - judged it a build-robustness risk for a cross-project (outside this Next app's root) import under Turbopack's output-file tracing, and the spec explicitly offered duplication as the fallback. Took the fallback directly rather than debugging a cross-project import mid-build."
+    },
+    {
+      "tried": "next/script turbopackIgnore comment placement to silence the CRAWLER_STORAGE_DIR output-tracing warning",
+      "why_it_failed": "tried the comment in 3 positions per Next's own suggested syntax; Turbopack kept flagging the same line. It's a non-fatal warning (build still succeeds) irrelevant to this local, non-deployed POC (no standalone/traced output is used) - left it with an explanatory comment instead of chasing the exact syntax further."
+    }
+  ]
+}
