@@ -13,9 +13,9 @@ next-env.d.ts
 # src/storage/, the evidence-storage source directory.
 poc/seo-crawler-poc/storage/
 
-# Local run state
+# Local run state — leading `**/` because these live in sub-projects, not the repo root
 *.log
-scripts/.target-site.json
+**/.target-site.json
 **/.crawl-status.json
 
 # Test/tooling artifacts
