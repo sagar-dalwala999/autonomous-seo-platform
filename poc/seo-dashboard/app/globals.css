@@ -1,0 +1,156 @@
+@import "tailwindcss";
+
+/* Design DNA tokens — sprints/design-dna.md §3. LOCKED: do not invent new grays. */
+:root {
+  --bg-canvas: #f4f4f2;
+  --bg-card: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #fafaf8;
+  --border: #e6e6e2;
+  --border-strong: #d9d9d4;
+  --text-primary: #17181c;
+  --text-secondary: #5c6470;
+  --text-faint: #6e7683;
+  --primary: #2563eb;
+  --primary-contrast: #ffffff;
+  --data-blue: #3b82f6;
+  --data-orange: #e8862e;
+  --data-green: #10b981;
+  --data-violet: #8b5cf6;
+  --data-red: #ef4444;
+  --ok: #067a55;
+  --ok-bg: #e7f7f0;
+  --danger: #dc2626;
+  --danger-bg: #fdecec;
+  --warn: #b45309;
+  --warn-bg: #fdf3e4;
+  --shadow-card-value: 0 1px 2px rgb(0 0 0 / 0.05);
+  --shadow-popover-value: 0 8px 24px rgb(0 0 0 / 0.1);
+}
+
+/* Pure-CSS fallback for no-JS clients; the no-flash script (layout.tsx) sets data-theme explicitly. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-canvas: #101114;
+    --bg-card: #17181c;
+    --bg-elevated: #1d1f24;
+    --bg-subtle: #1a1c20;
+    --border: #262930;
+    --border-strong: #32363f;
+    --text-primary: #f2f3f5;
+    --text-secondary: #a6acb8;
+    --text-faint: #8f96a3;
+    --primary: #6c9bf5;
+    --primary-contrast: #0b1220;
+    --data-blue: #6fa5f8;
+    --data-orange: #f2a65a;
+    --data-green: #34d399;
+    --data-violet: #a78bfa;
+    --data-red: #f87171;
+    --ok: #34d399;
+    --ok-bg: #12291f;
+    --danger: #f87171;
+    --danger-bg: #2e1717;
+    --warn: #f2a65a;
+    --warn-bg: #2c2113;
+    --shadow-card-value: none;
+    --shadow-popover-value: 0 8px 24px rgb(0 0 0 / 0.35);
+  }
+}
+
+[data-theme="dark"] {
+  --bg-canvas: #101114;
+  --bg-card: #17181c;
+  --bg-elevated: #1d1f24;
+  --bg-subtle: #1a1c20;
+  --border: #262930;
+  --border-strong: #32363f;
+  --text-primary: #f2f3f5;
+  --text-secondary: #a6acb8;
+  --text-faint: #8f96a3;
+  --primary: #6c9bf5;
+  --primary-contrast: #0b1220;
+  --data-blue: #6fa5f8;
+  --data-orange: #f2a65a;
+  --data-green: #34d399;
+  --data-violet: #a78bfa;
+  --data-red: #f87171;
+  --ok: #34d399;
+  --ok-bg: #12291f;
+  --danger: #f87171;
+  --danger-bg: #2e1717;
+  --warn: #f2a65a;
+  --warn-bg: #2c2113;
+  --shadow-card-value: none;
+  --shadow-popover-value: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+
+/*
+ * Tailwind color-name mapping. "foreground" carries --text-primary (body text) so it doesn't
+ * collide with the "primary" utility, which carries the brand/action token --primary instead.
+ */
+@theme inline {
+  --color-canvas: var(--bg-canvas);
+  --color-card: var(--bg-card);
+  --color-elevated: var(--bg-elevated);
+  --color-subtle: var(--bg-subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-foreground: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-faint: var(--text-faint);
+  --color-primary: var(--primary);
+  --color-primary-contrast: var(--primary-contrast);
+  --color-data-blue: var(--data-blue);
+  --color-data-orange: var(--data-orange);
+  --color-data-green: var(--data-green);
+  --color-data-violet: var(--data-violet);
+  --color-data-red: var(--data-red);
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+
+  --radius-card: 12px;
+  --radius-control: 8px;
+  --radius-pill: 999px;
+
+  --shadow-card: var(--shadow-card-value);
+  --shadow-popover: var(--shadow-popover-value);
+
+  --font-sans: var(--font-inter);
+}
+
+body {
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background-image: linear-gradient(90deg, var(--bg-subtle) 25%, var(--border) 37%, var(--bg-subtle) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.6s ease infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
