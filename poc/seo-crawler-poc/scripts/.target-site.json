@@ -1,8 +1,8 @@
 {
-  "pid": 6740,
+  "pid": 17836,
   "port": 3105,
   "startUrl": "http://localhost:3105/",
-  "startedAt": "2026-08-12T04:10:46.409Z",
+  "startedAt": "2026-08-12T07:32:08.656Z",
   "logFile": "D:\\projects\\autonomous-seo-platform\\poc\\seo-crawler-poc\\storage\\bench\\server-logs\\start-3105.log",
   "cwd": "D:\\projects\\autonomous-seo-platform\\poc\\target-site",
   "stopped": false

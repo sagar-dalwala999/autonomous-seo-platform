@@ -5,6 +5,7 @@ import type {
   CrawlOptions,
   CrawlSummary,
   CrawlScope,
+  CrawlSafety,
   CrawledPage,
   ExternalCheckResult,
   ExtractionResult,
@@ -13,6 +14,7 @@ import type {
   Redirect,
   RenderDivergence,
   RobotsInfo,
+  SkippedUrlRecord,
 } from "../models/types";
 import { normalizeUrl } from "../url/normalize";
 import { deriveScope, isInScope, remapAliasedUrl } from "../url/scope";
@@ -22,6 +24,7 @@ import { discoverSitemaps } from "../discovery/sitemap";
 import { needsJsRendering } from "../detection/needsJsRendering";
 import { RunStore } from "../storage/runStore";
 import { buildSummary } from "../report/summary";
+import { authHeaders, checkSafety, defaultSafety } from "./safety";
 
 const KEPT_HEADERS = [
   "content-type",
@@ -54,7 +57,7 @@ interface DiscoveryEntry {
   sources: Set<string>;
 }
 
-type SeedRequest = { url: string; uniqueKey: string };
+type SeedRequest = { url: string; uniqueKey: string; headers?: Record<string, string> };
 
 /**
  * A URL flagged for Playwright re-fetch. `staticHtml`/`staticExtraction` carry the static pass's
@@ -88,6 +91,31 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
 
   const store = new RunStore(options.outDir, options.runId);
   await store.init();
+
+  // Auth + safety (B2). authHdrs is the single source of truth for "is auth configured" —
+  // it's {} whenever CrawlAuth carries nothing, so hasAuth needs no separate presence check.
+  const authHdrs = authHeaders(options.auth ?? null);
+  const hasAuth = Object.keys(authHdrs).length > 0;
+  const safety: CrawlSafety = options.safety ?? defaultSafety(options.auth ?? null);
+  /** Dedup by URL — a guarded path (e.g. /logout) is typically linked from every member page. */
+  const skippedByUrl = new Map<string, SkippedUrlRecord>();
+  function makeSeedRequest(url: string): SeedRequest {
+    return hasAuth ? { url, uniqueKey: url, headers: authHdrs } : { url, uniqueKey: url };
+  }
+
+  // Session-loss detection (basic — full detection is a later step): warn once if an
+  // authenticated crawl gets a 401/403 after at least one page already succeeded.
+  let sawAuthSuccess = false;
+  let sessionLossWarned = false;
+  function noteAuthResponse(url: string, statusCode: number | null): void {
+    if (!hasAuth || statusCode === null) return;
+    if ((statusCode === 401 || statusCode === 403) && sawAuthSuccess && !sessionLossWarned) {
+      sessionLossWarned = true;
+      console.warn(`[auth] session may have expired at ${url} — later pages may be anonymous`);
+    } else if (statusCode >= 200 && statusCode < 400) {
+      sawAuthSuccess = true;
+    }
+  }
 
   const discovery = new Map<string, DiscoveryEntry>();
   const blocked = new Set<string>();
@@ -158,6 +186,14 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
       return false;
     }
 
+    // Guard rails (B2): a skipped URL is recorded as evidence, never enqueued, and never
+    // counted as a failure — its own bucket, mirroring the robots-blocked handling above.
+    const skip = checkSafety(normalizedUrl, parentUrl, safety);
+    if (skip) {
+      if (!skippedByUrl.has(normalizedUrl)) skippedByUrl.set(normalizedUrl, skip);
+      return false;
+    }
+
     const existing = discovery.get(normalizedUrl);
     if (existing) {
       existing.sources.add(source);
@@ -171,14 +207,14 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
   // links, not the URL the operator directly asked for.
   discovery.set(normalizedStart, { depth: 0, parentUrl: null, sources: new Set(["seed"]) });
   discoveredCount++;
-  const initialSeed: SeedRequest[] = [{ url: normalizedStart, uniqueKey: normalizedStart }];
+  const initialSeed: SeedRequest[] = [makeSeedRequest(normalizedStart)];
 
   for (const entry of sitemap.entries) {
     const remapped = remapAliasedUrl(entry.url, scope);
     const normalized = normalizeUrl(remapped);
     if (!normalized) continue;
     if (considerUrl(normalized, 1, null, "sitemap", true)) {
-      initialSeed.push({ url: normalized, uniqueKey: normalized });
+      initialSeed.push(makeSeedRequest(normalized));
     }
   }
 
@@ -359,6 +395,7 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
           const statusCode = response.statusCode ?? 0;
           const headers = pickHeaders(response.headers);
           const contentType = headers["content-type"] ?? "";
+          noteAuthResponse(normalizedUrl, statusCode);
 
           if (contentType && !contentType.includes("html")) {
             await recordFailure({
@@ -439,7 +476,7 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
             if (!link.targetNormalized) continue;
             const remapped = remapAliasedUrl(link.targetNormalized, scope);
             if (considerUrl(remapped, parentDepth + 1, request.loadedUrl ?? normalizedUrl, "html-link", true)) {
-              toEnqueue.push({ url: remapped, uniqueKey: remapped });
+              toEnqueue.push(makeSeedRequest(remapped));
             }
           }
           if (toEnqueue.length > 0 && processedUrls.size < options.maxPages) {
@@ -451,6 +488,7 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
           const normalizedUrl = request.uniqueKey;
           const meta = discovery.get(normalizedUrl);
           const blockedStatus = blockedStatusFrom(error as Error);
+          noteAuthResponse(normalizedUrl, blockedStatus);
           const failure: FailureRecord = {
             url: normalizedUrl,
             normalizedUrl,
@@ -523,6 +561,12 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
         preNavigationHooks: [
           async ({ page, request }) => {
             request.userData.__navStart = Date.now();
+            // Browser navigation ignores Request.headers entirely (confirmed against crawlee's
+            // browser-crawler internals) — setExtraHTTPHeaders is the only way in for a real
+            // page load. Used for Basic/Cookie/custom alike: a single header applies the same
+            // regardless of which aliased host (scope.hostAliases) is being fetched, unlike
+            // context.addCookies which is domain-scoped and would need per-alias duplication.
+            if (hasAuth) await page.setExtraHTTPHeaders(authHdrs);
             await page.route("**/*", (route) => {
               const type = route.request().resourceType();
               if (type === "image" || type === "font" || type === "media") return route.abort();
@@ -565,6 +609,7 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
           const html = await page.content();
           const finalUrl = page.url();
           const statusCode = response ? response.status() : null;
+          noteAuthResponse(normalizedUrl, statusCode);
           const headers = pickHeaders(response ? response.headers() : undefined);
           const responseTimeMs = Date.now() - (typeof request.userData.__navStart === "number" ? request.userData.__navStart : Date.now());
           // Best-effort: Playwright doesn't always expose this (e.g. cached/service-worker responses).
@@ -639,11 +684,13 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
           const normalizedUrl = request.uniqueKey;
           const meta = discovery.get(normalizedUrl);
           pwOutcomes.add(normalizedUrl);
+          const blockedStatus = blockedStatusFrom(error as Error);
+          noteAuthResponse(normalizedUrl, blockedStatus);
           void recordFailure({
             url: normalizedUrl,
             normalizedUrl,
             reason: classifyError(error as Error),
-            statusCode: blockedStatusFrom(error as Error),
+            statusCode: blockedStatus,
             attempts: request.retryCount + 1,
             error: error instanceof Error ? error.message : String(error),
             depth: meta?.depth ?? null,
@@ -684,6 +731,7 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
   }
 
   await store.saveBlocked(Array.from(blocked));
+  await store.saveSkipped(Array.from(skippedByUrl.values()));
 
   const pages = await store.loadAllPages();
   const finishedAt = new Date();

@@ -1,8 +1,9 @@
 /** Slice S4 implements the real arg parsing + wiring. */
 import { parseArgs } from "node:util";
 import { runCrawl } from "./crawler/crawl";
+import { defaultSafety } from "./crawler/safety";
 import { printSummary } from "./report/summary";
-import type { CrawlOptions } from "./models/types";
+import type { CrawlAuth, CrawlOptions, CrawlSafety } from "./models/types";
 
 const HELP_TEXT = `
 seo-crawler-poc — POC-1 CLI crawler for the Autonomous SEO Platform
@@ -22,6 +23,11 @@ Options:
   --run-id ID           Run identifier (default: <hostname>-<yyyymmdd-hhmmss>)
   --check-external      HEAD-check up to 50 unique external link targets after the crawl
                          (rps <= 2, 10s timeout) -> external-links.json. Off by default.
+  --basic-auth user:pass  HTTP Basic auth credentials for protected routes
+  --cookie "<header>"     Raw Cookie header value (e.g. "session=abc; csrf=xyz")
+  --header "Name: Value"  Extra request header, repeatable (API tokens, WAF bypass tokens)
+  --exclude a,b,c         Comma-separated path substrings to always skip
+  --no-safety             Disable logout/destructive guard rails (UNSAFE on authenticated crawls)
   -h, --help            Show this help
 
 Exit codes:
@@ -66,6 +72,11 @@ async function main(): Promise<void> {
       rps: { type: "string" },
       "run-id": { type: "string" },
       "check-external": { type: "boolean" },
+      "basic-auth": { type: "string" },
+      cookie: { type: "string" },
+      header: { type: "string", multiple: true },
+      exclude: { type: "string" },
+      "no-safety": { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -133,6 +144,43 @@ async function main(): Promise<void> {
 
   const runId = values["run-id"] ?? defaultRunId(parsedStart.hostname);
 
+  let basic: { username: string; password: string } | null = null;
+  if (values["basic-auth"] !== undefined) {
+    const idx = values["basic-auth"].indexOf(":");
+    if (idx === -1) {
+      console.error(`Error: --basic-auth must be user:pass (got "${values["basic-auth"]}")`);
+      process.exit(1);
+    }
+    basic = { username: values["basic-auth"].slice(0, idx), password: values["basic-auth"].slice(idx + 1) };
+  }
+
+  const customHeaders: Record<string, string> = {};
+  for (const raw of values.header ?? []) {
+    const idx = raw.indexOf(":");
+    if (idx === -1) {
+      console.error(`Error: --header must be "Name: Value" (got "${raw}")`);
+      process.exit(1);
+    }
+    customHeaders[raw.slice(0, idx).trim()] = raw.slice(idx + 1).trim();
+  }
+
+  const cookie = values.cookie ?? null;
+  const hasAuth = basic !== null || cookie !== null || Object.keys(customHeaders).length > 0;
+  const auth: CrawlAuth | null = hasAuth ? { basic, cookie, headers: customHeaders } : null;
+
+  const excludePatterns = values.exclude
+    ? values.exclude.split(",").map((p) => p.trim()).filter(Boolean)
+    : [];
+
+  let safety: CrawlSafety = { ...defaultSafety(auth), excludePatterns };
+  if (values["no-safety"]) {
+    console.warn(
+      "WARNING: --no-safety disables the logout/destructive guard rails. Unsafe on authenticated crawls " +
+        "— the crawler may follow /logout or a destructive GET endpoint and disrupt its own session.",
+    );
+    safety = { ...safety, denyLogout: false, denyDestructive: false };
+  }
+
   const options: CrawlOptions = {
     startUrl: parsedStart.toString(),
     maxPages,
@@ -145,12 +193,17 @@ async function main(): Promise<void> {
     maxRequestsPerSecond: rps,
     hostAliases,
     maxDepth,
+    auth,
+    safety,
   };
 
   const checkExternal = values["check-external"] === true;
 
+  // Never print credentials — name the auth method only, never the value.
+  const authLabel = basic !== null ? "basic" : cookie !== null ? "cookie" : Object.keys(customHeaders).length > 0 ? "headers" : "none";
+
   console.log(`Crawl started: ${options.startUrl}`);
-  console.log(`  run-id: ${options.runId} | render: ${options.render} | robots: ${options.respectRobots} | max-pages: ${options.maxPages === Number.MAX_SAFE_INTEGER ? "all" : options.maxPages} | max-depth: ${options.maxDepth ?? "unlimited"} | check-external: ${checkExternal}`);
+  console.log(`  run-id: ${options.runId} | render: ${options.render} | robots: ${options.respectRobots} | max-pages: ${options.maxPages === Number.MAX_SAFE_INTEGER ? "all" : options.maxPages} | max-depth: ${options.maxDepth ?? "unlimited"} | check-external: ${checkExternal} | auth: ${authLabel}`);
 
   try {
     const summary = await runCrawl(options, checkExternal);

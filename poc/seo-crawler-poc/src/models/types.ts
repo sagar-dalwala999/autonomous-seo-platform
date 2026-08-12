@@ -15,6 +15,41 @@ export interface CrawlScope {
   seedUrl: string;
 }
 
+/** Credentials for crawling protected routes. Never persisted into run evidence. */
+export interface CrawlAuth {
+  /** HTTP Basic — becomes an Authorization header on every request (staging sites). */
+  basic: { username: string; password: string } | null;
+  /** Raw Cookie header value, e.g. "session=abc; csrf=xyz" (log in manually, paste the cookie). */
+  cookie: string | null;
+  /** Extra request headers — API tokens, WAF bypass tokens. */
+  headers: Record<string, string>;
+}
+
+/**
+ * Guard rails for authenticated crawls. A logged-in crawler follows every link it finds, which
+ * inside a member area includes /logout (kills its own session) and destructive GET endpoints.
+ * Defaults are asymmetric on purpose: ON when credentials are present, OFF otherwise — on an
+ * anonymous crawl "/how-to-cancel-a-subscription" is just an article, and skipping it would
+ * silently cost coverage.
+ */
+export interface CrawlSafety {
+  /** Never fetch URLs whose path matches these (case-insensitive substrings). */
+  excludePatterns: string[];
+  /** Skip logout-ish paths so the crawler can't end its own session mid-run. */
+  denyLogout: boolean;
+  /** Skip destructive-looking GET endpoints (delete/remove/cancel/…). */
+  denyDestructive: boolean;
+}
+
+/** A URL deliberately not fetched — recorded as evidence, never silently dropped. */
+export interface SkippedUrlRecord {
+  url: string;
+  reason: "logout" | "destructive" | "user-excluded";
+  matchedPattern: string;
+  /** Page the link was found on. */
+  foundOn: string | null;
+}
+
 export interface CrawlOptions {
   startUrl: string;
   maxPages: number;
@@ -30,6 +65,10 @@ export interface CrawlOptions {
   hostAliases: string[];
   /** --max-depth N — max link-hops from the start URL; null = unlimited. */
   maxDepth: number | null;
+  /** Credentials for protected routes; null = anonymous crawl. */
+  auth?: CrawlAuth | null;
+  /** Guard rails; defaults derived from whether auth is present (see CrawlSafety). */
+  safety?: CrawlSafety;
 }
 
 export interface Redirect {
