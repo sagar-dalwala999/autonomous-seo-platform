@@ -15,8 +15,25 @@ export interface CrawlScope {
   seedUrl: string;
 }
 
+/**
+ * Auth step 2 — drive a real browser through a login form, for sites where pasting a session
+ * cookie isn't practical. The session then belongs to the Playwright context for the whole crawl.
+ */
+export interface FormLoginConfig {
+  loginUrl: string;
+  usernameSelector: string;
+  passwordSelector: string;
+  submitSelector: string;
+  username: string;
+  password: string;
+  /** Must be present after submit for the login to count as successful; null = skip the check. */
+  successSelector: string | null;
+}
+
 /** Credentials for crawling protected routes. Never persisted into run evidence. */
 export interface CrawlAuth {
+  /** Browser-driven form login (step 2). Mutually usable with the header forms below. */
+  formLogin?: FormLoginConfig | null;
   /** HTTP Basic — becomes an Authorization header on every request (staging sites). */
   basic: { username: string; password: string } | null;
   /** Raw Cookie header value, e.g. "session=abc; csrf=xyz" (log in manually, paste the cookie). */
@@ -372,6 +389,74 @@ export interface AnalysisReport {
   rulesRun: number;
   rulesSkippedDataUnavailable: string[];
   issues: Issue[];
+}
+
+/** ---------- Tier 2: link graph, similarity, crawl diffing ---------- */
+
+export interface PageGraphScore {
+  pageId: string;
+  url: string;
+  /** Internal PageRank scaled to 1-100 on a log curve (the Ahrefs Page Rating model). */
+  internalRank: number;
+  /** Raw PageRank probability before scaling — kept so the maths stays auditable. */
+  rawRank: number;
+  inlinks: number;
+  uniqueInlinks: number;
+  outlinks: number;
+  depth: number;
+}
+
+export interface GraphReport {
+  runId: string;
+  generatedAt: string;
+  dampingFactor: number;
+  iterations: number;
+  converged: boolean;
+  pages: PageGraphScore[];
+  /** Crawled pages with zero internal inlinks (seed excluded). */
+  orphans: string[];
+}
+
+export interface SimilarityCluster {
+  /** Lowest pairwise similarity within the cluster — the conservative figure to report. */
+  similarity: number;
+  members: { pageId: string; url: string; wordCount: number }[];
+}
+
+export interface SimilarityReport {
+  runId: string;
+  generatedAt: string;
+  /** Jaccard threshold a pair must meet to cluster. */
+  threshold: number;
+  /** Word n-gram size used for shingling. */
+  shingleSize: number;
+  clusters: SimilarityCluster[];
+}
+
+export interface PageFieldChange {
+  field: string;
+  before: unknown;
+  after: unknown;
+}
+
+export interface PageChange {
+  url: string;
+  pageId: string;
+  changes: PageFieldChange[];
+}
+
+export interface CrawlDiff {
+  baseRunId: string;
+  headRunId: string;
+  generatedAt: string;
+  /** URLs present in head but not base. */
+  added: string[];
+  /** URLs present in base but not head. */
+  removed: string[];
+  changed: PageChange[];
+  unchangedCount: number;
+  /** Issue lifecycle when both runs have been analyzed; null otherwise. */
+  issues: { newIssues: string[]; fixedIssues: string[]; persistingCount: number } | null;
 }
 
 export interface CrawlSummary {

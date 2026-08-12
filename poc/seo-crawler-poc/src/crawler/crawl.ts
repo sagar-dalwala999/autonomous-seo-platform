@@ -1,7 +1,9 @@
 /** Slice S4 implements. */
 import { Configuration, CheerioCrawler, PlaywrightCrawler, RequestQueue } from "crawlee";
+import { chromium } from "playwright";
 import type { Request as PlaywrightRequest } from "playwright";
 import type {
+  CrawlAuth,
   CrawlOptions,
   CrawlSummary,
   CrawlScope,
@@ -25,6 +27,7 @@ import { needsJsRendering } from "../detection/needsJsRendering";
 import { RunStore } from "../storage/runStore";
 import { buildSummary } from "../report/summary";
 import { authHeaders, checkSafety, defaultSafety } from "./safety";
+import { performFormLogin, cookiesToHeader } from "./formLogin";
 
 const KEPT_HEADERS = [
   "content-type",
@@ -50,6 +53,32 @@ const RENDER_SETTLE_TICK_MS = 1000;
 const EXTERNAL_CHECK_CAP = 50;
 const EXTERNAL_CHECK_RPS = 2;
 const EXTERNAL_CHECK_TIMEOUT_MS = 10_000;
+
+/**
+ * Auth step 2 (C1): runs the browser-driven login ONCE, before the crawl loop, and folds the
+ * resulting session cookie into a CrawlAuth so it rides B2's existing authHeaders()/defaultSafety()
+ * path unchanged — that single Cookie header then reaches BOTH the CheerioCrawler pass (request
+ * headers) and the Playwright escalation pass (setExtraHTTPHeaders), so neither fetch layer is
+ * left anonymous. Throws on failure — a half-anonymous authenticated crawl is worse than none, so
+ * the caller must abort rather than fall through with effectiveAuth unchanged.
+ */
+async function resolveEffectiveAuth(auth: CrawlAuth | null): Promise<CrawlAuth | null> {
+  if (!auth?.formLogin) return auth;
+
+  const loginBrowser = await chromium.launch();
+  try {
+    const loginContext = await loginBrowser.newContext();
+    const result = await performFormLogin(auth.formLogin, loginContext);
+    if (!result.ok) {
+      throw new Error(`Form login failed at ${auth.formLogin.loginUrl}, aborting crawl (no anonymous fallback): ${result.error ?? "unknown reason"}`);
+    }
+    const sessionCookie = cookiesToHeader(result.cookies);
+    console.log(`[auth] form login OK at ${auth.formLogin.loginUrl} — session cookie captured for both fetch passes`);
+    return { ...auth, cookie: auth.cookie ? `${auth.cookie}; ${sessionCookie}` : sessionCookie };
+  } finally {
+    await loginBrowser.close();
+  }
+}
 
 interface DiscoveryEntry {
   depth: number;
@@ -89,14 +118,20 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
   }
   const scope = deriveScope(normalizedStart, options.hostAliases);
 
+  // C1: resolve the form-login session (if configured) BEFORE creating any run evidence — a
+  // failed login must leave no partial run directory behind.
+  const effectiveAuth = await resolveEffectiveAuth(options.auth ?? null);
+
   const store = new RunStore(options.outDir, options.runId);
   await store.init();
 
   // Auth + safety (B2). authHdrs is the single source of truth for "is auth configured" —
   // it's {} whenever CrawlAuth carries nothing, so hasAuth needs no separate presence check.
-  const authHdrs = authHeaders(options.auth ?? null);
+  // effectiveAuth carries the form-login session cookie merged in (C1) alongside any static
+  // basic/cookie/header auth, so both B2 helpers see the full picture unchanged.
+  const authHdrs = authHeaders(effectiveAuth);
   const hasAuth = Object.keys(authHdrs).length > 0;
-  const safety: CrawlSafety = options.safety ?? defaultSafety(options.auth ?? null);
+  const safety: CrawlSafety = options.safety ?? defaultSafety(effectiveAuth);
   /** Dedup by URL — a guarded path (e.g. /logout) is typically linked from every member page. */
   const skippedByUrl = new Map<string, SkippedUrlRecord>();
   function makeSeedRequest(url: string): SeedRequest {
