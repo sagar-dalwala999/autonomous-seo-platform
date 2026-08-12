@@ -221,6 +221,11 @@ export function rawHtmlPath(runId: string, pageId: string): string {
   return path.join(RUNS_DIR, runId, "raw", `${pageId}.html`);
 }
 
+/** Trust boundary for callers serving files by id — see app/api/raw's containment check. */
+export function runsDir(): string {
+  return RUNS_DIR;
+}
+
 export async function getBench(): Promise<BenchManifest[]> {
   const stamps = (await listDirs(BENCH_DIR)).filter((d) => d !== "server-logs");
   const manifests: BenchManifest[] = [];

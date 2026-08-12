@@ -1,16 +1,30 @@
 import { readFile, stat } from "node:fs/promises";
+import path from "node:path";
 import { NextRequest } from "next/server";
-import { rawHtmlPath } from "@/lib/data";
+import { rawHtmlPath, runsDir } from "@/lib/data";
 
+// Dots are legal in ids, so `..` alone would satisfy a charset check and escape via path.join —
+// the dot-segment rejection and the containment assert below are both load-bearing.
 const SAFE_ID = /^[a-zA-Z0-9_.-]+$/;
+
+function isSafeId(id: string): boolean {
+  return SAFE_ID.test(id) && id !== "." && id !== "..";
+}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ runId: string; pageId: string }> }) {
   const { runId, pageId } = await params;
-  if (!SAFE_ID.test(runId) || !SAFE_ID.test(pageId)) {
+  if (!isSafeId(runId) || !isSafeId(pageId)) {
     return new Response("Invalid run or page id", { status: 400 });
   }
 
   const filePath = rawHtmlPath(runId, pageId);
+  // Final containment check: whatever the id rules allow, the resolved file must live under the
+  // runs directory. Survives any future change to how the path is built.
+  const resolved = path.resolve(filePath);
+  const root = path.resolve(runsDir());
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    return new Response("Invalid run or page id", { status: 400 });
+  }
   try {
     await stat(filePath);
   } catch {
