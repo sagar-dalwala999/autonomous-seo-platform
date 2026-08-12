@@ -122,6 +122,15 @@ export interface FailureRecord {
   parentUrl: string | null;
 }
 
+/** Additive (B3, mirrors crawler B2's src/models/types.ts SkippedUrlRecord exactly). A URL
+ *  deliberately not fetched by the safety guard rails — evidence, never a silent drop. */
+export interface SkippedUrlRecord {
+  url: string;
+  reason: "logout" | "destructive" | "user-excluded";
+  matchedPattern: string;
+  foundOn: string | null;
+}
+
 export interface RobotsEvidence {
   url: string;
   statusCode: number | null;

@@ -11,6 +11,7 @@ import { FormSection } from "@/components/new-crawl/FormSection";
 import { RenderModeCards } from "@/components/new-crawl/RenderModeCards";
 import { ScopeCards, type CrawlScope } from "@/components/new-crawl/ScopeCards";
 import { RobotsSwitch } from "@/components/new-crawl/RobotsSwitch";
+import { AuthSection, type AuthMethod } from "@/components/new-crawl/AuthSection";
 import { ProgressPanel } from "@/components/new-crawl/ProgressPanel";
 import type { CrawlStatusResponse, PanelState, RenderMode } from "@/components/new-crawl/types";
 
@@ -55,9 +56,24 @@ export default function NewCrawlPage() {
   const [render, setRender] = useState<RenderMode>("auto");
   const [aliases, setAliases] = useState("");
 
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [authMethod, setAuthMethod] = useState<AuthMethod>("none");
+  const [basicUsername, setBasicUsername] = useState("");
+  const [basicPassword, setBasicPassword] = useState("");
+  const [cookie, setCookie] = useState("");
+  const [headerName, setHeaderName] = useState("");
+  const [headerValue, setHeaderValue] = useState("");
+  const [skipLogoutDestructive, setSkipLogoutDestructive] = useState(true);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
   const [urlError, setUrlError] = useState<string | null>(null);
   const [maxPagesError, setMaxPagesError] = useState<string | null>(null);
   const [maxDepthError, setMaxDepthError] = useState<string | null>(null);
+  const [basicUsernameError, setBasicUsernameError] = useState<string | null>(null);
+  const [basicPasswordError, setBasicPasswordError] = useState<string | null>(null);
+  const [cookieError, setCookieError] = useState<string | null>(null);
+  const [headerNameError, setHeaderNameError] = useState<string | null>(null);
+  const [headerValueError, setHeaderValueError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const [runId, setRunId] = useState<string | null>(null);
@@ -102,6 +118,43 @@ export default function NewCrawlPage() {
     }
   }
 
+  /** Mirrors the crawl-runner.ts server-side check — never trust the client alone. */
+  function validateAuth(): boolean {
+    setBasicUsernameError(null);
+    setBasicPasswordError(null);
+    setCookieError(null);
+    setHeaderNameError(null);
+    setHeaderValueError(null);
+    if (!authEnabled) return true;
+
+    let ok = true;
+    if (authMethod === "basic") {
+      if (!basicUsername.trim()) {
+        setBasicUsernameError("Username is required.");
+        ok = false;
+      }
+      if (!basicPassword.trim()) {
+        setBasicPasswordError("Password is required.");
+        ok = false;
+      }
+    } else if (authMethod === "cookie") {
+      if (!cookie.trim()) {
+        setCookieError("Paste the Cookie header value.");
+        ok = false;
+      }
+    } else if (authMethod === "header") {
+      if (!headerName.trim()) {
+        setHeaderNameError("Header name is required.");
+        ok = false;
+      }
+      if (!headerValue.trim()) {
+        setHeaderValueError("Header value is required.");
+        ok = false;
+      }
+    }
+    return ok;
+  }
+
   async function submit(startUrl: string) {
     const uErr = validateUrl(startUrl);
     const pErr = allPages ? null : validateMaxPages(maxPagesInput);
@@ -109,8 +162,9 @@ export default function NewCrawlPage() {
     setUrlError(uErr);
     setMaxPagesError(pErr);
     setMaxDepthError(dErr);
+    const authOk = validateAuth();
 
-    if (uErr || pErr || dErr) {
+    if (uErr || pErr || dErr || !authOk) {
       setFormError("Fix the highlighted fields before starting.");
       if (uErr) urlInputRef.current?.focus();
       return;
@@ -123,6 +177,18 @@ export default function NewCrawlPage() {
       .map((h) => h.trim())
       .filter(Boolean);
 
+    // auth/safety null when the login toggle is off or method is "none" — an anonymous crawl
+    // never sends credentials, and the server derives its own (permissive) safety defaults.
+    const auth =
+      authEnabled && authMethod !== "none"
+        ? {
+            basic: authMethod === "basic" ? { username: basicUsername.trim(), password: basicPassword } : null,
+            cookie: authMethod === "cookie" ? cookie.trim() : null,
+            headers: authMethod === "header" ? { [headerName.trim()]: headerValue } : {},
+          }
+        : null;
+    const safety = auth ? { denyLogout: skipLogoutDestructive, denyDestructive: skipLogoutDestructive, excludePatterns: [] } : null;
+
     try {
       const res = await fetch("/api/crawls", {
         method: "POST",
@@ -134,6 +200,8 @@ export default function NewCrawlPage() {
           respectRobots,
           render,
           aliases: aliasList,
+          auth,
+          safety,
         }),
       });
       const data = await res.json();
@@ -326,6 +394,50 @@ export default function NewCrawlPage() {
               </div>
 
               <RobotsSwitch checked={respectRobots} onChange={setRespectRobots} disabled={locked} />
+            </FormSection>
+
+            <FormSection label="Access" className="border-t border-border pt-5">
+              <AuthSection
+                enabled={authEnabled}
+                onEnabledChange={setAuthEnabled}
+                disabled={locked}
+                method={authMethod}
+                onMethodChange={setAuthMethod}
+                basicUsername={basicUsername}
+                onBasicUsernameChange={(v) => {
+                  setBasicUsername(v);
+                  if (basicUsernameError) setBasicUsernameError(null);
+                }}
+                basicUsernameError={basicUsernameError}
+                basicPassword={basicPassword}
+                onBasicPasswordChange={(v) => {
+                  setBasicPassword(v);
+                  if (basicPasswordError) setBasicPasswordError(null);
+                }}
+                basicPasswordError={basicPasswordError}
+                cookie={cookie}
+                onCookieChange={(v) => {
+                  setCookie(v);
+                  if (cookieError) setCookieError(null);
+                }}
+                cookieError={cookieError}
+                headerName={headerName}
+                onHeaderNameChange={(v) => {
+                  setHeaderName(v);
+                  if (headerNameError) setHeaderNameError(null);
+                }}
+                headerNameError={headerNameError}
+                headerValue={headerValue}
+                onHeaderValueChange={(v) => {
+                  setHeaderValue(v);
+                  if (headerValueError) setHeaderValueError(null);
+                }}
+                headerValueError={headerValueError}
+                skipLogoutDestructive={skipLogoutDestructive}
+                onSkipLogoutDestructiveChange={setSkipLogoutDestructive}
+                advancedOpen={advancedOpen}
+                onAdvancedOpenChange={setAdvancedOpen}
+              />
             </FormSection>
 
             <div className="flex flex-col gap-2">

@@ -8,6 +8,7 @@ import type {
   FailureRecord,
   RobotsEvidence,
   SitemapResult,
+  SkippedUrlRecord,
 } from "./types";
 
 // Turbopack warns this env-driven path defeats output-file tracing; harmless here — no standalone
@@ -101,6 +102,13 @@ export async function getRun(runId: string): Promise<RunDetail> {
     readJson<FailureRecord[]>(path.join(dir, "failures.json")),
   ]);
   return { report, robots, sitemaps, blocked: blocked ?? [], failures: failures ?? [] };
+}
+
+/** Additive (B3). skipped.json is absent on runs from before the safety guard rails shipped
+ *  (or on runs with no auth) — optional-safe, [] means "nothing skipped", never an error. */
+export async function readSkipped(runId: string): Promise<SkippedUrlRecord[]> {
+  const skipped = await readJson<SkippedUrlRecord[]>(path.join(RUNS_DIR, runId, "skipped.json"));
+  return skipped ?? [];
 }
 
 /** runId -> parsed pages, loaded once and reused (POC scale: hundreds of pages, fine in memory). */
