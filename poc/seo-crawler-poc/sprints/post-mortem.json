@@ -1,0 +1,27 @@
+{
+  "project": "seo-crawler-poc",
+  "tool_class": "non-media",
+  "tier": "A",
+  "ownership": "personal",
+  "build_class": "port",
+  "phases": {
+    "phase-0": { "target_min": 12, "actual_min": 6, "ceiling_hit": false, "track_b_status": "completed" },
+    "phase-1": { "target_min": 8, "actual_min": 10, "rounds_used": 2, "notes": "R1 REVISE (3 structural applied); R2 concurrent with fan-out, 1 structural (alias at 3 call sites) resolved via in-flight SendMessage redirect" },
+    "phase-2": { "target_min": 25, "actual_min": 23, "n_sub_generators": 7, "restart_count": 0 },
+    "phase-2b-integration": { "actual_min": 45, "notes": "3 live bugs fixed test-driven: S7 detection edge (script-dominant), escalation budget starvation, shared Crawlee RequestQueue. +4xx escalation gate. Evidence checker: run-resolution + byPath identity. Result 18/18 evidence PASS." },
+    "ui-wave-1": { "actual_min": 45, "n_sub_generators": 1, "notes": "S8 scaffold; found+fixed own data-layer sort bug" },
+    "ui-wave-2": { "actual_min": 40, "n_sub_generators": 2, "notes": "S9+S10 parallel; mid-flight scope redirects from Sagar (new-crawl full page, depth first-class) absorbed without restart; S9 executed a REAL UI-triggered crawl as its own verification" },
+    "phase-3": { "rounds_used": 0, "notes": "Replaced by Sagar-led testing at his request (MVP-first). Integrator smoke: build clean, 6/6 routes 200, E2E UI crawl w/ maxDepth verified, console clean." }
+  },
+  "mid_build_scope_additions": [
+    "reference-driven dashboard (design-dna.md) with light+dark",
+    "complete 10-section page evidence detail (hard req)",
+    "dynamic crawl from UI with live progress (hard req)",
+    "--max-depth crawler option",
+    "Chromium retry on blocked/failed fetches (403/429/timeout/network)"
+  ],
+  "total_to_handoff_min": 168,
+  "kpi_hit": false,
+  "kpi_target_min": 90,
+  "notes": "90-min port-class target was for the crawler POC alone; Sagar added the full dashboard + 2 hard features mid-build. Crawler-only proof landed at ~95 min (18/18 evidence PASS). Zero generator restarts across 10 slices; 2 structural plan-review saves (host-alias contract would have silently broken 3 evidence classes)."
+}

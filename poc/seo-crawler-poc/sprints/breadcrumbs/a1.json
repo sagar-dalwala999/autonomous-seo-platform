@@ -1,0 +1,30 @@
+{
+  "slice": "A1-extraction-extensions",
+  "started_at": "2026-08-12T00:00:00Z",
+  "ended_at": "2026-08-12T00:40:00Z",
+  "status": "completed",
+  "done_so_far": [
+    "src/extraction/social.ts (new): extractSocialTags($) -> SocialTags {og,twitter} ordered maps; checks BOTH property= and name= attrs for both og:*/twitter:* prefixes (real pages mix the spec'd attr up); first-instance-wins on duplicate keys (documented, Record can't hold an ordered list)",
+    "src/extraction/hreflang.ts (new): extractHreflang($, base) -> HreflangEntry[] from <link rel=alternate hreflang=...>, resolved absolute href; rel=alternate with no hreflang attr (feeds/print stylesheets) excluded",
+    "src/extraction/pixel-width.ts (new): estimateTitlePx/estimateMetaDescriptionPx via a documented Adobe standard-Helvetica AFM per-1000-em char-width table (Arial is metric-compatible with Helvetica; Google SERP renders Arial-family) scaled to 20px title / 14px description buckets; explicitly flagged ESTIMATE not measurement in the file's top comment; null/empty -> null; unknown chars fall back to avg lowercase width",
+    "src/extraction/pageStats.ts (new): extractPageStats($, html, contentText, headers, httpVersion) -> htmlBytes (UTF-8 byte length, not JS string length), textRatio (UTF-8 bytes of the ALREADY noise-stripped content.ts text / htmlBytes, reused not recomputed, clamped to 1), domNodes ($('*').length, element nodes only), contentEncoding + httpVersion passthrough",
+    "src/extraction/metadata.ts extended (not rewritten): extractTitles/extractMetaDescriptions (every instance, doc order, [] when none; existing extractTitle/extractMetaDescription untouched = still first-instance back-compat), extractMetaKeywords, extractMetaRefresh (new findMetaHttpEquivContent helper because meta-refresh is authored via http-equiv= not name= -- easy trap; regex parses delay+url, strips optional quotes, malformed content keeps raw with delaySeconds/url null)",
+    "src/extraction/headings.ts: verified unchanged is correct -- $(sel).map().get() already captures every <h1> with no truncation; added a 4-h1 regression test instead of touching the module",
+    "src/extraction/index.ts: replaced the entire v2 placeholder block with real safe()-wrapped calls; hoisted content/title/metaDescription into locals once (needed by both pageStats and pixelWidths) instead of recomputing",
+    "New fixture tests/fixtures/html/multi-instance-social.html: 2 titles, 2 meta descriptions, OG+Twitter tags authored both standard AND attr-swapped, duplicate og:image (first-wins proof), 3-entry hreflang cluster + alternate-no-hreflang control, meta refresh '5;url=/redirected-page', meta keywords",
+    "Tests: social.test.ts(6) hreflang.test.ts(5) pixel-width.test.ts(5) pageStats.test.ts(7) + metadata.test.ts extended(+13) headings.test.ts(+1) index.test.ts(+2) = 32 new cases, all present/absent/multi-instance/malformed per dispatch",
+    "VERIFIED: npx vitest run tests/unit/extraction -> 99/99 (67 pre-existing untouched + 32 new). npx vitest run (full repo) -> 161/161 across 19 files. npx tsc --noEmit -> 0 errors.",
+    "do_not_touch respected: src/models/types.ts, src/crawler/**, src/analysis/**, sprints/** (besides this file) untouched. extractPage's (artifact, scope) signature unchanged -- src/crawler/crawl.ts's two call sites needed zero edits."
+  ],
+  "next_step": "none - slice complete",
+  "dead_ends": [
+    {
+      "tried": "extractMetaRefresh reading via the existing findMetaContent(meta[name=...]) helper, same as description/keywords",
+      "why_it_failed": "meta-refresh is authored as <meta http-equiv=\"refresh\" content=\"...\">, not name=refresh -- findMetaContent would always return undefined for it. Added a separate findMetaHttpEquivContent helper mirroring the same case-insensitive-match pattern instead."
+    },
+    {
+      "tried": "embedding a literal newline in the multi-instance-social.html fixture's second meta description via a \\n escape sequence typed into the HTML source",
+      "why_it_failed": "Write tool writes the literal two characters backslash+n into the file, not an actual newline byte -- collapseWhitespace only collapses real whitespace, so the literal \\n stayed in the extracted text and failed the equality assertion. Fixed by using plain double-spaces in the fixture (already covered by other whitespace-collapse tests elsewhere) instead of trying to author a real newline inside an HTML attribute value."
+    }
+  ]
+}

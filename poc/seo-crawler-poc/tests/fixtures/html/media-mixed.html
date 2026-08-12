@@ -1,0 +1,24 @@
+<!-- synthetic: <video src>+poster, <video><source> multi w/ type attrs, YouTube (embed/nocookie/youtu.be), Vimeo, non-video iframe excluded, relative poster -->
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Trail Videos</title></head>
+<body>
+  <article>
+    <h1>Trail videos</h1>
+
+    <video src="/media/intro.mp4" poster="/media/intro-poster.jpg" controls></video>
+
+    <video controls poster="fallback-poster.jpg">
+      <source src="/media/hike-1080.webm" type="video/webm">
+      <source src="/media/hike-720.mp4" type="video/mp4">
+    </video>
+
+    <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="YouTube video"></iframe>
+    <iframe src="https://www.youtube-nocookie.com/embed/M7lc1UVf-VE?rel=0" title="Privacy-enhanced YouTube"></iframe>
+    <iframe src="https://youtu.be/oHg5SJYRHA0" title="Short-link embed"></iframe>
+    <iframe src="https://player.vimeo.com/video/76979871" title="Vimeo video"></iframe>
+
+    <iframe src="https://www.google.com/maps/embed?pb=abc123" title="Map"></iframe>
+  </article>
+</body>
+</html>

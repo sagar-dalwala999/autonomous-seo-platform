@@ -1,0 +1,29 @@
+{
+  "slice": "S2-extraction",
+  "started_at": "2026-08-11T00:00:00Z",
+  "ended_at": "2026-08-11T00:45:00Z",
+  "status": "completed",
+  "done_so_far": [
+    "extractPage implemented in src/extraction/index.ts (frozen signature untouched), split into metadata.ts/headings.ts/links.ts/images.ts/schema.ts/content.ts/shared.ts, re-exported from index.ts",
+    "Every top-level field wrapped in a safe() catch-and-fallback so extractPage can never throw regardless of markup pathology; per-item URL resolution failures (bad href/src) are skipped, never fatal",
+    "metadata.ts: title/description case-insensitive meta[name] lookup, canonical resolved via <base>/finalUrl, robots meta merges <meta name=robots>+<meta name=googlebot>+headers['x-robots-tag'] with agent-prefix stripping and 'none'->noindex+nofollow",
+    "links.ts: excludes mailto/tel/javascript/sms/fax + empty-href + fragment-only from the links array entirely (decision, not a bug — they aren't crawl links); target preserves authored scheme/host (http://, www-mix) verbatim; targetNormalized+type delegate to src/url (imported normally, never inlined)",
+    "images.ts: alt undefined-vs-empty-string mapped to null-vs-\"\" (missing vs present-empty is the seeded evidence distinction); width/height only accepted when the attribute is a bare digit string (rejects \"100%\"/\"auto\")",
+    "schema.ts: every ld+json block captured raw (outer-trim only, no internal whitespace touch) with parsed/parseError from a try/catch JSON.parse — truncated/empty blocks preserved, never dropped",
+    "content.ts: clones $.root() before removing script/style/noscript/template/nav/header/footer/[aria-hidden=true], so the caller's tree is never mutated; contentHash = sha256(lowercased, whitespace-collapsed text)",
+    "52 vitest cases across 7 files in tests/unit/extraction/ + 20 fixture files in tests/fixtures/html/ (mirroring the real target-site's 18 seeded manifest classes, read from ../target-site/app/**/page.tsx source comments for exact realism, plus 2 synthetic shapes not present on target-site: two-H1, <base href>)",
+    "links.test.ts + index.test.ts use vi.hoisted test doubles for src/url (URL-API normalize + host-equality isInScope) per dispatch instruction — never imported S1's real implementation, which was mid-build concurrently",
+    "npx vitest run tests/unit/extraction: 52/52 passing. npx tsc --noEmit: zero errors project-wide (all slices)"
+  ],
+  "next_step": "none — slice complete",
+  "dead_ends": [
+    {
+      "tried": "clone $('body') directly (Cheerio<Element> | Cheerio<Document> union) for content extraction",
+      "why_it_failed": "cheerio's .d.ts constrains find()/remove()'s `this` to Cheerio<Element> only — the union broke tsc. Fixed by always cloning $.root() (Cheerio<Document>, no union), removing noise there, then branching only at the final .text() call where each branch's own concrete type is used directly (no union crosses a method call)."
+    },
+    {
+      "tried": "broken-markup.html fixture with an unclosed <title> tag as one of the malformed-markup cases",
+      "why_it_failed": "<title> is RCDATA — an unclosed <title> swallows the entire rest of the document (including </html>) as literal title text per real HTML parsing rules, so nothing after it becomes real elements. Not a bug in extraction, a bad fixture. Replaced with a properly-closed <title> plus other genuinely malformed bits (unclosed <span>/<p>, missing closing </body></html>, empty ld+json block) that still exercise the never-throws guarantee without collapsing the whole document into one text node."
+    }
+  ]
+}

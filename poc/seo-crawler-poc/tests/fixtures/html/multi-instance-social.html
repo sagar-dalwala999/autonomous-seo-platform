@@ -1,0 +1,28 @@
+<!-- v2 fixture: 2x<title>, 2x meta description, OG+Twitter sets (mixed property/name attrs), hreflang cluster, meta refresh, keywords -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>First Title | Summit Trail Gear</title>
+  <title>Second Duplicate Title</title>
+  <meta name="description" content="First description instance.">
+  <meta name="description" content="  Second   description  instance. ">
+  <meta http-equiv="refresh" content="5;url=/redirected-page">
+  <meta name="keywords" content="hiking,  trail gear, backpacks">
+  <meta property="og:title" content="OG Title Value">
+  <meta property="og:description" content="OG description value.">
+  <meta property="og:image" content="/images/og-cover.jpg">
+  <meta property="og:image" content="/images/og-cover-2.jpg">
+  <meta name="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Twitter Title Value">
+  <meta property="twitter:description" content="Twitter description via property attr.">
+  <link rel="alternate" hreflang="en" href="/en/page">
+  <link rel="alternate" hreflang="fr" href="/fr/page">
+  <link rel="alternate" hreflang="x-default" href="/page">
+  <link rel="alternate" href="/feed.xml">
+</head>
+<body>
+  <h1>Multi-instance fixture</h1>
+  <p>Fixture page exercising v2 extraction fields together.</p>
+</body>
+</html>

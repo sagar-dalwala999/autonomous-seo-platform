@@ -1,0 +1,16 @@
+<!-- synthetic: <base href> resolution — relative hrefs/srcs must resolve against base, not finalUrl -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Base Href Page</title>
+  <base href="https://summittrailgear.example/assets/sub/">
+  <link rel="canonical" href="canonical-target">
+</head>
+<body>
+  <article>
+    <h1>Base href test</h1>
+    <p><a href="child">relative link</a></p>
+    <img src="photo.jpg" alt="photo">
+  </article>
+</body>
+</html>

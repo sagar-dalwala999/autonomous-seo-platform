@@ -1,0 +1,19 @@
+{
+  "slice": "S7-js-detection",
+  "started_at": "2026-08-11T10:20:00Z",
+  "ended_at": "2026-08-11T10:29:00Z",
+  "status": "completed",
+  "done_so_far": [
+    "needsJsRendering implemented in src/detection/needsJsRendering.ts (frozen signature kept: html, extraction, scope) — dependency-free regex/string heuristics, no cheerio",
+    "6 named signals: tiny-body, empty-app-shell, low-text-ratio, no-links-no-text, noscript-warning, spa-bundle-only",
+    "DETECTION_THRESHOLDS exported alongside needsJsRendering with the numeric knobs (tinyBodyBytes=1536, emptyShellMaxInnerTextChars=40, lowTextRatio=0.02, lowTextRatioMinHtmlBytes=500, noLinksNoTextMaxWordCount=30, spaBundleMaxWordCount=50)",
+    "Decision rule: needed = any strong signal (empty-app-shell, noscript-warning) OR >=2 weak signals — implemented via a Set of strong signal names + weak-count tally",
+    "empty-app-shell detection: div#root/#__next/#app matched by id, then depth-counted <div>/</div> scan to isolate that element's inner text (handles nested divs without a full parser); falls back to whole-doc visible text for data-reactroot/ng-version/ng-app attribute markers",
+    "6 fixtures authored in tests/fixtures/detection/*.html: csr-app-shell (empty #root + bundle script), rich-ssr-blog (~500 words + nav), tiny-static-example (example.com shape), noscript-warning, empty-body, borderline-sparse-landing (~40 words + 3 internal links, single-weak-signal case)",
+    "tests/unit/detection/helpers.ts: extraction()/link()/wordCount() build honest ExtractionResult literals (wordCount+contentHash derived from the same text string passed to content.text, never hand-typed) plus a FAKE_SCOPE constant for the unused CrawlScope param",
+    "7 vitest cases in tests/unit/detection/needsJsRendering.test.ts — all passing, incl. an explicit 'signals array lists every fired signal, not just deciding ones' case",
+    "npx tsc --noEmit clean across the whole repo (fixed one noUncheckedIndexedAccess issue: noscript regex capture group m[1] is string|undefined, added ?? '' fallback)"
+  ],
+  "next_step": "none — slice complete",
+  "dead_ends": []
+}

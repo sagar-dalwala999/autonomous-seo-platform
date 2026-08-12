@@ -1,0 +1,33 @@
+{
+  "slice": "S9-dashboard-overview-crawl-trigger",
+  "started_at": "2026-08-11T11:20:00Z",
+  "status": "completed",
+  "ended_at": "2026-08-11T11:47:00Z",
+  "done_so_far": [
+    "app/page.tsx (Overview): action cards, KPI strip w/ real prev-run deltas, hex-matrix + dot-matrix charts (custom SVG), work-queue table, run-selector, filter chips.",
+    "lib/data-overview.ts: buildHexMatrix/buildTimeline/buildWorkQueue/buildKpiStrip/topFailureClasses/avgResponseTime — pure aggregation over lib/data.ts's read primitives, never edited lib/data.ts itself.",
+    "components/charts/hex-matrix.tsx + dot-matrix-timeline.tsx: true custom-SVG hexagons/dots (no chart lib), keyboard-focusable + tooltip, click-through to /pages/[id].",
+    "components/overview/*: action-cards, kpi-strip, work-queue-table, filter-chips, run-selector (custom dropdown, not native select), overview-topbar-actions, new-crawl-trigger-button.",
+    "SCOPE CHANGE mid-build (Sagar, live): '+ New crawl' moved from a SlideOver to a dedicated page app/new-crawl/page.tsx (form left / live progress+log right, stacks on mobile). Old components/overview/new-crawl-panel.tsx deleted (body moved into the page route).",
+    "lib/crawl-runner.ts: spawns `node --import tsx src/index.ts ...` (single process, no npx/cmd.exe wrapper — verified live), shell:false + args array, detached:true, stdio to storage/runs/<runId>/crawl.log. .crawl-status.json is the source of truth (not in-memory state) with a reconciling read (dead-pid + report.json presence -> done/failed) so a killed/restarted dev server doesn't strand a run's status.",
+    "app/api/crawls/route.ts (POST, 409 one-at-a-time) + app/api/crawls/[runId]/route.ts (GET status + 30-line log tail + reportReady).",
+    "Max depth field added per scope change: full plumbing wired (StartCrawlInput.maxDepth, CLI arg) but UI field ships DISABLED with 'coming in integration' hint — CLI does not support --max-depth yet as of this session (checked via --help). Flip MAX_DEPTH_SUPPORTED in app/new-crawl/page.tsx once it lands.",
+    "Hybrid-engine helper line added on /new-crawl next to render-mode control, exact wording from the redirect.",
+    "REAL end-to-end UI-triggered crawl executed and observed: http://localhost:3105, max-pages 30 -> runId ui-20260811-171311, exitCode 2 (done, some 4xx expected), cross-checked .crawl-status.json on disk independent of the UI. Overview switched to the new run via 'View run' and rendered real numbers (85.7% coverage, 3 failed, 2 blocked, hex-matrix's blocked/gray-dark class populated for the first time with real data).",
+    "Fixed a real bug found via the Playwright loop (not code-reading): DeltaPill (do-not-touch) couples color rigidly to direction; my first kpi() implementation flipped direction for 'good/bad' semantics producing a pill showing a negative number with a green up-arrow. Fixed to always match the literal numeric sign.",
+    "npx tsc --noEmit: 0 errors in every file this slice owns. npm run build: passes clean, exit 0 (S10's earlier Turbopack fs-bundling panic on /pages resolved itself between my first and second build attempt — not my code).",
+    "Screenshots in sprints/breadcrumbs/s9-screens/: overview-1440-light, overview-mixed-run-1440-light, overview-mixed-run-1440-dark, overview-390-mobile-dark, new-crawl-form-1440-dark, new-crawl-complete-1440-dark, overview-after-ui-crawl-1440-dark.",
+    "Dev server (port 3101) stopped at end of session; port confirmed free after."
+  ],
+  "next_step": "None — slice complete. Follow-up for whoever lands the CLI --max-depth flag: set MAX_DEPTH_SUPPORTED = true in app/new-crawl/page.tsx and remove the '!MAX_DEPTH_SUPPORTED' clause from the input's disabled condition.",
+  "dead_ends": [
+    {
+      "tried": "npx tsx src/index.ts ... via shell:true for the crawl-runner spawn",
+      "why_it_failed": "not attempted after finding node --import tsx (tsx's package '.' export is a Node --import-compatible loader) runs the CLI in a single process with shell:false, args array, no npx/cmd.exe wrapper layer — cleaner and the captured pid is the real worker, so this path was never needed"
+    },
+    {
+      "tried": "Relying on browser_tabs select/new + a follow-up resize+screenshot call (2+ round trips) to capture a specific tab in the shared Playwright MCP browser",
+      "why_it_failed": "another concurrently-running Generator agent (S10, port 3102) was driving the same shared browser session; multi-round-trip sequences repeatedly landed on their tab mid-sequence. Worked around by minimizing calls between establishing a tab and capturing, and by reading back every screenshot before trusting it."
+    }
+  ]
+}

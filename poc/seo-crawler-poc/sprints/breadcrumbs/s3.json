@@ -1,0 +1,21 @@
+{
+  "slice": "S3-discovery",
+  "started_at": "2026-08-11T00:00:00Z",
+  "ended_at": "2026-08-11T00:35:00Z",
+  "status": "completed",
+  "done_so_far": [
+    "fetchRobots implemented in src/discovery/robots.ts — fetches <origin>/robots.txt via fetchWithTimeout (10s AbortController), 200 -> robots-parser + captures raw content/sitemap declarations (resolved absolute via origin)/parseStatus ok|empty, 404/non-200 -> allow-all + statusCode + parseStatus 'unavailable', network/timeout error -> allow-all + statusCode null + parseStatus 'error'. isAllowed(url, ua?) delegates to robots-parser with default ua = the userAgent fetchRobots was called with; robots-parser's undefined verdict (host-mismatch ambiguity) is treated as allowed, not blocked. Never throws.",
+    "discoverSitemaps implemented in src/discovery/sitemap.ts — candidates = robots.sitemaps, else <origin>/sitemap.xml fallback; fetches + XMLValidator.validate() first (fast-xml-parser's XMLParser.parse() is lenient and does NOT throw on malformed XML, so validation must run before parse or malformed files parse into empty stubs silently); <urlset> -> entries with sourceSitemap; <sitemapindex> -> recurses (MAX_DEPTH=5, visited-set keyed by resolved URL so self-referencing/looping indexes terminate on first repeat); every fetched file recorded in files[] (kind urlset|index|unknown, urlCount, error) even on 404/network-error/malformed/gzip; entries deduped by URL keeping first sourceSitemap; MAX_ENTRIES=50000 safety cap; gzip sitemaps detected via .gz suffix, content-type, or 0x1f 0x8b magic bytes -> recorded as error 'gzip not supported in POC', never parsed.",
+    "src/discovery/http.ts added (not in original stub set, within my ownership src/discovery/**) — shared fetchWithTimeout + resolveAbsolute helpers used by both robots.ts and sitemap.ts to avoid duplicating the AbortController timeout boilerplate.",
+    "14 vitest cases in tests/unit/discovery/{robots,sitemap}.test.ts + 8 fixtures in tests/fixtures/xml/ (plain urlset, sitemapindex with 2 children incl. one shared/dedup-tested URL, malformed XML, self-referencing sitemapindex, 2 robots.txt fixtures — one generic with absolute+relative Sitemap: declarations, one mirroring the actual target-site's shape [Disallow /guides/, absolute Sitemap:] verified byte-for-byte against ../target-site/public/robots.txt). Covers: sitemap 404 child (statusCode recorded, siblings still processed), robots 404/network-error/empty-body, disallow actually blocking isAllowed, recursion-loop termination, gzip detection, default-userAgent plumbing on isAllowed.",
+    "npx vitest run tests/unit/discovery: 2 files, 14/14 passed.",
+    "npx tsc --noEmit: zero errors in src/discovery/** and tests/unit/discovery/** (including my test file). Two pre-existing errors remain elsewhere in the repo, NOT mine: src/detection/needsJsRendering.ts:112 (S7, string|undefined arg) and src/report/summary.ts:215 (S5, number|undefined arg) — untouched, noted only."
+  ],
+  "next_step": "none — slice complete",
+  "dead_ends": [
+    {
+      "tried": "relying on XMLParser.parse() to throw on malformed sitemap XML",
+      "why_it_failed": "fast-xml-parser's parser is lenient by design (confirmed empirically: unterminated <loc> tags just parse into an empty-string leaf, no throw) — switched to running XMLValidator.validate() first and branching on its !== true result before ever calling parse()"
+    }
+  ]
+}

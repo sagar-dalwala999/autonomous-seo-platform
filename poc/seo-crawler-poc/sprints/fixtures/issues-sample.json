@@ -1,0 +1,83 @@
+{
+  "runId": "fixture-sample",
+  "generatedAt": "2026-08-12T00:00:00.000Z",
+  "rulebookVersion": "0.1.0",
+  "configSnapshot": { "note": "A5 UI fixture — shape matches AnalysisReport in src/models/types.ts" },
+  "healthScore": 76.2,
+  "pagesAnalyzed": 21,
+  "counts": { "error": 6, "warning": 4, "notice": 2 },
+  "rulesRun": 34,
+  "rulesSkippedDataUnavailable": ["social-og-missing"],
+  "issues": [
+    {
+      "ruleId": "title-missing",
+      "category": "on-page",
+      "severity": "error",
+      "scope": "page",
+      "url": "http://localhost:3105/about",
+      "pageId": "6a2b9dfc1c22",
+      "message": "Page has no <title> tag.",
+      "howToFix": "Add a unique, descriptive title of 30-60 characters.",
+      "evidence": [{ "field": "title", "value": null }],
+      "threshold": "title present"
+    },
+    {
+      "ruleId": "title-duplicate",
+      "category": "on-page",
+      "severity": "error",
+      "scope": "site",
+      "url": "http://localhost:3105/blog/rain-gear-care",
+      "pageId": "8c1d2e3f4a5b",
+      "message": "Title duplicated across 2 pages.",
+      "howToFix": "Give each page a unique title reflecting its content.",
+      "evidence": [
+        { "field": "title", "value": "Hiking Gear Tips | Summit Trail Gear" },
+        { "field": "title", "value": "Hiking Gear Tips | Summit Trail Gear", "pageId": "9d2e3f4a5b6c" }
+      ]
+    },
+    {
+      "ruleId": "robots-noindex",
+      "category": "indexability",
+      "severity": "warning",
+      "scope": "page",
+      "url": "http://localhost:3105/products/switchback-trekking-poles",
+      "pageId": "0ee65adde711",
+      "message": "Page is noindex.",
+      "howToFix": "Remove the noindex directive if this page should rank.",
+      "evidence": [{ "field": "robots.noindex", "value": true }, { "field": "robots.meta", "value": ["noindex"] }]
+    },
+    {
+      "ruleId": "image-alt-missing",
+      "category": "images",
+      "severity": "warning",
+      "scope": "page",
+      "url": "http://localhost:3105/products/cascade-rain-shell",
+      "pageId": "1f2a3b4c5d6e",
+      "message": "1 image is missing alt text.",
+      "howToFix": "Add descriptive alt attributes.",
+      "evidence": [{ "field": "images[0].alt", "value": null }]
+    },
+    {
+      "ruleId": "redirect-loop",
+      "category": "http",
+      "severity": "error",
+      "scope": "site",
+      "url": "http://localhost:3105/loop-a",
+      "pageId": null,
+      "message": "Redirect loop detected.",
+      "howToFix": "Break the loop so the URL resolves to a 2xx page.",
+      "evidence": [{ "field": "failures[].reason", "value": "redirect-loop" }]
+    },
+    {
+      "ruleId": "sitemap-404-entry",
+      "category": "sitemap",
+      "severity": "notice",
+      "scope": "site",
+      "url": "http://localhost:3105/guides/gear-repair",
+      "pageId": null,
+      "message": "Sitemap lists a URL that returns 404.",
+      "howToFix": "Remove dead URLs from the sitemap or restore the page.",
+      "evidence": [{ "field": "sitemap.sitemapEntriesFailed[0]", "value": "https://summittrailgear.example/guides/gear-repair" }]
+    }
+  ]
+}

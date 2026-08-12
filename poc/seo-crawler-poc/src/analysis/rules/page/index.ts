@@ -1,0 +1,30 @@
+/** Slice A3 implements — page-scope rule packs registered here. */
+import type { CrawledPage, Issue, RuleMeta } from "../../../models/types";
+import type { AnalysisConfig } from "../../config";
+import { contentRules } from "./content";
+import { httpRules } from "./http";
+import { imageRules } from "./images";
+import { indexabilityRules } from "./indexability";
+import { onPageRules } from "./on-page";
+import { securityRules } from "./security";
+import { socialRules } from "./social";
+import { structuredDataRules } from "./structured-data";
+
+export interface PageRule {
+  meta: RuleMeta;
+  /** Pure: same page + config → same findings. Missing dataRequirements → return null (skipped). */
+  evaluate(page: CrawledPage, config: AnalysisConfig): Issue[] | null;
+}
+
+export function pageRules(): PageRule[] {
+  return [
+    ...onPageRules(),
+    ...indexabilityRules(),
+    ...imageRules(),
+    ...structuredDataRules(),
+    ...socialRules(),
+    ...contentRules(),
+    ...httpRules(),
+    ...securityRules(),
+  ];
+}

@@ -1,0 +1,29 @@
+{
+  "slice": "S6-bench-harness",
+  "started_at": "2026-08-11T00:00:00Z",
+  "status": "completed",
+  "ended_at": "2026-08-11T10:40:00Z",
+  "done_so_far": [
+    "scripts/lib/{paths,proc,stamp,records}.ts shared helpers",
+    "scripts/serve-target-site.ts + scripts/stop-target-site.ts — live-verified end-to-end (build, serve, robots/sitemap/redirect-chain/redirect-loop probes, clean stop via verified PID)",
+    "scripts/bench.ts — brief §4 test matrix runner (npm run crawl -- ... per target, manifest.json)",
+    "scripts/evidence-check.ts — all 18 seeded-manifest checks (brief §6) + live re-grep traceability appendix",
+    "scripts/poc-report.ts + scripts/bench-flow.ts — POC-1-REPORT.md assembly + serve->bench->evidence-check->poc-report orchestrator",
+    "npx tsc --noEmit clean project-wide"
+  ],
+  "next_step": "none — slice complete. bench.ts/evidence-check.ts are code-complete but not yet exercised against a real crawl since S4 (crawler-core) is still a stub as of this slice's completion; re-run scripts/bench-flow.ts once S1-S5+S7 are integrated to get a real POC-1-REPORT.md.",
+  "dead_ends": [
+    {
+      "tried": "spawnDetached piping the detached child's stdout/stderr through this process (child.stdout.pipe(log))",
+      "why_it_failed": "keeps the parent's event loop alive waiting to drain the pipe -- serve-target-site.ts never exited even after the server was confirmed up. Fixed: write directly to a file descriptor via stdio:[ignore,fd,fd], no pipe."
+    },
+    {
+      "tried": "spawning the target-site server via `npx next start -p <port>` with shell:true",
+      "why_it_failed": "child.pid is the transient cmd.exe wrapper's PID, which can exit while a grandchild node process keeps serving -- stop-target-site.ts then finds nothing to kill. Fixed: spawn `node <target-site>/node_modules/next/dist/bin/next start -p <port>` directly, shell:false, so the recorded PID is the actual server process."
+    },
+    {
+      "tried": "detached: process.platform !== \"win32\" (assumed only POSIX needs the detached flag)",
+      "why_it_failed": "on win32 this evaluates to false, so the child stays attached to the spawning console session and dies the instant that console is torn down (confirmed via a matched diagnostic: detached:true survived across separate shell invocations, detached:false did not). Fixed to detached:true unconditionally."
+    }
+  ]
+}

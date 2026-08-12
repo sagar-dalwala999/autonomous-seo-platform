@@ -1,0 +1,21 @@
+{
+  "slice": "A4-analysis-site-rules-store-cli-gate",
+  "started_at": "2026-08-12T00:00:00Z",
+  "status": "completed",
+  "ended_at": "2026-08-12T00:00:00Z",
+  "done_so_far": [
+    "16 site rules across src/analysis/rules/site/{types,helpers,duplicates,orphans,sitemap,robots,redirects,links,hreflang,index}.ts",
+    "store.ts (writeIssues/readIssues, stable severity->ruleId->url ordering)",
+    "cli.ts (parseArgs -> loadConfig -> runAnalysis -> summary print)",
+    "scripts/analyzer-gate.ts (explicit 30-row expectation table + false-positive check + evidence-resolution check, bench-manifest auto-discovery)",
+    "45 unit tests in tests/unit/analysis/site/** (all passing)",
+    "real end-to-end verification: ran the analyzer via A3's real engine against all 4 real bench runs, then ran the real gate against real issues.json -> 27/30 PASS, 0 FAIL, 3 legitimate N/A, 0 false positives, 395/395 evidence pointers resolved, exit 0",
+    "self-tested gate failure paths with a throwaway synthetic run (deleted after) to confirm FAIL/exit-1 detection actually works"
+  ],
+  "next_step": "none - slice complete. Integration note for Main Claude: gate's page-scope expectation rows (1,3,4,6a-c,10a/c/d,11a-c,12,15a,17) match by A3's actual category names (on-page/indexability/images/structured-data/content), confirmed correct against real A3 output.",
+  "dead_ends": [
+    { "tried": "trusting ctx.summary.sitemap.* (crawler-precomputed) for the sitemap hygiene four-pack", "why_it_failed": "decided against — recomputed independently from ctx.sitemap.entries/ctx.pages/ctx.failures instead, so the analyzer doesn't inherit a bug in the crawler's own cross-ref logic; not a failure, a deliberate design change made before writing any code" },
+    { "tried": "weaklyLinkedRule evidence pointing at an aggregated array of source pathnames", "why_it_failed": "didn't resolve to a real stored field for the gate's evidence-resolution check; refactored to buildInlinkOccurrences() so evidence points at the real source page's links[N].targetNormalized" },
+    { "tried": "evidence-resolution gate check requiring the leaf value to be strictly defined", "why_it_failed": "false-failed A3's real structured-data-missing-required-property evidence (value: null, documenting a genuinely-absent structuredData[0].parsed.offers key) — added expectAbsent mode keyed off evidence.value === null/undefined" }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "slice": "A3 — analysis-engine + page rules",
+  "started_at": "2026-08-12T00:00:00.000Z",
+  "status": "completed",
+  "ended_at": "2026-08-12T00:00:00.000Z",
+  "done_so_far": [
+    "analysis.config.json (project root) — Screaming-Frog-aligned thresholds, _sources doc header per threshold",
+    "src/analysis/config.ts — loadConfig: defaults + deep-merge override + validate (range checks, severity enum, min<max pairs)",
+    "src/analysis/rules/page/shared.ts — issueFor()/severityFor() helpers (config severity override support)",
+    "src/analysis/rules/page/on-page.ts — 11 rules: title-missing/too-short/too-long/multiple, meta-description-missing/too-short/too-long/multiple, h1-missing/multiple, heading-hierarchy-skip",
+    "src/analysis/rules/page/indexability.ts — 4 rules: noindex, canonical-mismatch, canonical-absent, meta-refresh-present",
+    "src/analysis/rules/page/images.ts — 4 rules: image-missing-alt, image-empty-alt, image-bad-format, image-missing-dimensions",
+    "src/analysis/rules/page/structured-data.ts — 3 rules: structured-data-parse-error, structured-data-missing-required-property (MF-4: Product/Article/FAQPage), structured-data-type-mismatch (heuristic)",
+    "src/analysis/rules/page/social.ts — 2 rules: og-missing, twitter-missing",
+    "src/analysis/rules/page/content.ts — 2 rules: thin-content, low-text-ratio",
+    "src/analysis/rules/page/http.ts — 3 rules: http-error-4xx, http-error-5xx, slow-page",
+    "src/analysis/rules/page/security.ts — 1 rule: security-headers-missing",
+    "src/analysis/rules/page/index.ts — pageRules() aggregator (29 rules total)",
+    "src/analysis/engine.ts — runAnalysis: tolerant fs reads, pageRules+siteRules execution, stub-error catch for A4 (now moot, A4 landed live), stable severity->ruleId->url ordering, healthScore/counts/rulesSkippedDataUnavailable assembly, writeIssues call",
+    "tests/unit/analysis/page/*.test.ts (8 files) + config.test.ts + engine.test.ts — 69 A3 tests, all passing (129 total in tests/unit/analysis incl. A4's concurrent work)",
+    "real smoke test against storage/runs/20260811-110248-target-full (pre-v2 run, via scratch copy, deleted after): 127 issues found, 14 error/51 warning/62 notice, 8 rules skipped-data-unavailable (7 mine + A4's hreflang-not-reciprocal), zero throws. Confirmed firing on: /about title-missing+meta-description-missing, /products/ridgeline-backpack-45l structured-data-missing-required-property:offers (manifest #11c), /products/switchback-trekking-poles noindex (#12), /blog/layering-basics structured-data-type-mismatch:Recipe (#11b), /contact title-too-short+h1-missing (#3b/#6a), /blog/trail-snacks thin-content (#17), /products/granite-hiking-boots image-bad-format:bmp+meta-description-missing (#10d/#4)"
+  ],
+  "next_step": "none — slice complete. Note for Main Claude/A4: manifest #15b (http:// non-https absolute internal link) and #15c (absolute www/non-www mix) are NOT covered by any A3 or A4 rule per spec text as written (neither slice's scope explicitly lists a link-scheme-consistency rule) — evidence is captured in LinkRecord.target (preserves authored URL) but no rule flags it. Flag for the gate/owner if those two manifest items need a home.",
+  "dead_ends": []
+}

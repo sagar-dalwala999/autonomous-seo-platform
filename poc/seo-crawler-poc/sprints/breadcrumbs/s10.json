@@ -1,0 +1,32 @@
+{
+  "slice": "S10 dashboard-explorer + page evidence detail",
+  "started_at": "2026-08-11T16:45:00Z",
+  "ended_at": "2026-08-11T17:42:00Z",
+  "status": "completed",
+  "done_so_far": [
+    "lib/explorer-shared.ts (client-safe types) + lib/data-explorer.ts (server: buildExplorerRows/groupFailuresByClass/findPageIdByUrl)",
+    "/pages full explorer: status/rendered/depth facets, URL filter, sortable columns, show-more pagination, unified pages+failures+blocked rows, Depth column promoted to be first-class (post live-review)",
+    "/pages/[id] full 10-section evidence detail: header band, metadata (canonical mismatch + x-robots-tag), headings, links (internal/external filter), images (missing/empty alt, BMP flag), structured data (raw+parseError), content (collapsible), redirect chain, headers, actions (copy/download JSON, open/download raw HTML)",
+    "app/api/raw/[runId]/[pageId]/route.ts - text/plain streaming, path-traversal guarded, download variant",
+    "/failures grouped by class + Depth column (added post live-review) + blocked list + robots evidence card",
+    "/sitemap cross-ref lists (in-sitemap-not-crawled/crawled-not-in-sitemap/sitemapEntriesFailed) with page-detail links",
+    "/runs link target changed to /?run= (Overview)",
+    "npm run build clean (0 TS errors)",
+    "Field-by-field verified all 3 seeded pages against stored JSON: exact matches on choosing-hiking-boots (invalid JSON-LD), old-gear (2-hop redirect), switchback-trekking-poles (noindex+missing-alt)",
+    "Copy JSON verified via clipboard read-back; raw HTML route verified byte-identical via diff; path traversal returns 400; missing page returns 404",
+    "Zero console errors/warnings across all screens, light+dark, 1440 + 390 widths",
+    "Confirmed shell scroll region works (scrollHeight>clientHeight, overflowY:auto, scrollTop settable) per Main Claude's live-review note",
+    "Dev server stopped, port 3102 freed"
+  ],
+  "next_step": "none - slice complete",
+  "dead_ends": [
+    {
+      "tried": "client component importing types directly from lib/data-explorer.ts",
+      "why_it_failed": "data-explorer.ts imports lib/data.ts which imports node:fs/promises; Turbopack fatals bundling a client chunk with a node: import. Fixed by extracting client-safe types (StatusBucket/ExplorerRow/statusTone) into lib/explorer-shared.ts with zero fs imports; client components import only that file."
+    },
+    {
+      "tried": "next dev -p 3102 for the verification server",
+      "why_it_failed": "Next.js 16 has a single-dev-server-per-project lock (independent of port) that collided with S9's already-running dev server on 3101 for the same seo-dashboard project. Used `next start -p 3102` (production server, already built) instead - clean and didn't touch anyone else's process."
+    }
+  ]
+}

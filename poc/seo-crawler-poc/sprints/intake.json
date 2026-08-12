@@ -1,0 +1,13 @@
+{
+  "project": "seo-crawler-poc",
+  "one_liner": "CLI proof-of-concept crawler for the Autonomous SEO Platform (POC-1): hybrid static-first Crawlee crawler with Playwright escalation, full SEO extraction, evidence storage, coverage report",
+  "surface": "cli",
+  "tier": "A",
+  "deploy_target": "none — local CLI POC, proof = real crawl runs with stored evidence",
+  "database": "none — Crawlee local storage + JSON files on disk (per plan doc §3)",
+  "working_dir": "D:/projects/autonomous-seo-platform/poc/seo-crawler-poc",
+  "source_plan": "D:/projects/autonomous-seo-platform/docs/phase 1_POC_crawler.md",
+  "requirement": "D:/projects/autonomous-seo-platform/SPEC.md §4 (Research Area A) + §25 Deliverable 5.1",
+  "binding_decisions": ["D-01 Node/TS", "D-02 Crawlee hybrid static-first, Playwright escalation", "D-33 politeness/safety"],
+  "git": "NO git repo/branches/commits — per operating contract §0, user has not instructed git usage"
+}

@@ -1,0 +1,20 @@
+{
+  "slice": "S1-url-intelligence",
+  "started_at": "2026-08-11T00:00:00Z",
+  "ended_at": "2026-08-11T00:30:00Z",
+  "status": "completed",
+  "done_so_far": [
+    "normalizeUrl implemented in src/url/normalize.ts — relative resolution, http(s)-only, lowercase scheme+host, default-port strip (non-default kept), fragment strip, utm_*/gclid/fbclid/msclkid/ref strip, stable key+value sort, exact-dup collapse, trailing-slash strip except root, percent-encoding via URL API, null-not-throw on malformed input",
+    "deriveScope/isInScope/remapAliasedUrl implemented in src/url/scope.ts using tldts.getDomain; registrableDomain=\"\" + fallbackHost=host:port sentinel pair for localhost/IPs; alias + www-variant matching shared via matchesAlias helper",
+    "uniqueKeyFor added (spec.md S1 lists it; dispatch's frozen-signature list didn't, added anyway as pure identity fn returning the normalizedUrl since normalization IS the dedup key) and exported from src/url/index.ts alongside remapAliasedUrl",
+    "22 vitest cases in tests/unit/url/{normalize,scope}.test.ts covering all plan §6 examples + tracking-param/query-sort/port/alias/scope/malformed cases — all passing",
+    "npx tsc --noEmit clean across the whole repo (zero errors, including other slices' stub files)"
+  ],
+  "next_step": "none — slice complete",
+  "dead_ends": [
+    {
+      "tried": "asserting normalizeUrl('.../p%61ge') === normalizeUrl('.../page') as the percent-encoding-consistency test",
+      "why_it_failed": "WHATWG URL does not decode already-percent-encoded alphanumeric octets back to literal chars (verified empirically) — replaced with a real URL-API behavior: raw unsafe char (space) vs its pre-escaped form (%20) converge, plus an idempotency check"
+    }
+  ]
+}
