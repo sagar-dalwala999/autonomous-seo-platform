@@ -99,7 +99,7 @@ export default async function PageDetailPage({ params, searchParams }: Props) {
 
   // staticRawSaved is the crawler's own record that a pre-render snapshot was stored.
   const hasStaticHtml = page.renderDivergence?.staticRawSaved === true;
-  const frame = frameability(page.headers);
+  const frame = frameability(page.headers, page.url);
 
   const analysisReport = await readAnalysisReport(runId);
   const pageIssues = analysisReport ? findingsForPage(analysisReport, page.pageId) : [];

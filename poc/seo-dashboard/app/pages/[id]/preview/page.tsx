@@ -41,7 +41,7 @@ export default async function PagePreviewPage({ params, searchParams }: Props) {
     .then(() => true)
     .catch(() => false);
 
-  const frame = frameability(page.headers);
+  const frame = frameability(page.headers, page.url);
 
   return (
     <div className="space-y-4 pb-8">

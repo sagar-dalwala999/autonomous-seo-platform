@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { statusTone } from "@/lib/explorer-shared";
 import { cn } from "@/lib/cn";
+import { isFrameableScheme } from "./frameability";
 
 export type ReplayVariant = "rendered" | "static";
 
@@ -65,7 +66,9 @@ export function PageReplay({
 }: PageReplayProps) {
   const [variant, setVariant] = useState<ReplayVariant>("rendered");
   const [styled, setStyled] = useState(true);
-  const [mode, setMode] = useState<"live" | "shot" | "replay">(canFrameLive ? "live" : hasScreenshot ? "shot" : "replay");
+  // Re-checked here, not just trusted from props: this is the value that becomes an iframe src.
+  const liveOk = canFrameLive && isFrameableScheme(pageUrl);
+  const [mode, setMode] = useState<"live" | "shot" | "replay">(liveOk ? "live" : hasScreenshot ? "shot" : "replay");
   const [state, setState] = useState<"loading" | "loaded" | "error" | "not-found">("loading");
   const [payload, setPayload] = useState<ReplayPayload | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -125,15 +128,17 @@ export function PageReplay({
           <span className="max-w-[420px] truncate text-secondary" title={pageUrl}>
             {pageUrl}
           </span>
-          <a
-            href={pageUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex shrink-0 items-center gap-1 text-primary underline underline-offset-2"
-          >
-            <ExternalLink size={12} strokeWidth={1.75} aria-hidden="true" />
-            open live URL
-          </a>
+          {isFrameableScheme(pageUrl) && (
+            <a
+              href={pageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 items-center gap-1 text-primary underline underline-offset-2"
+            >
+              <ExternalLink size={12} strokeWidth={1.75} aria-hidden="true" />
+              open live URL
+            </a>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5 text-faint">
           <Clock size={12} strokeWidth={1.75} aria-hidden="true" />
@@ -144,7 +149,7 @@ export function PageReplay({
       <div className="flex flex-wrap items-center gap-2">
         <div role="tablist" aria-label="Preview mode" className="inline-flex rounded-control border border-border bg-subtle p-0.5 text-xs">
           {([
-            ["live", "Live page", canFrameLive],
+            ["live", "Live page", liveOk],
             ["shot", "Screenshot", hasScreenshot],
             ["replay", "Captured HTML", true],
           ] as const).map(([key, label, enabled]) => (
@@ -234,7 +239,7 @@ export function PageReplay({
       </div>
       )}
 
-      {mode === "live" && (
+      {mode === "live" && liveOk && (
         <>
           <div className="flex items-start gap-2 rounded-control border border-border-strong bg-elevated px-3 py-2 text-xs text-secondary">
             <FileWarning size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-faint" aria-hidden="true" />
