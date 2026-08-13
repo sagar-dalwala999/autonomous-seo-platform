@@ -25,6 +25,7 @@ import { extractHeadBoundary, extractCharset, extractBaseHrefInfo } from "./head
 import { extractHeadMeta } from "./headMeta";
 import { extractDocumentStructure } from "./structure";
 import { extractFonts } from "./fonts";
+import { extractFaviconCandidates, assessGoogleSerpEligibility, buildFaviconReport } from "./favicons";
 import { resolveBase } from "./shared";
 
 export {
@@ -52,6 +53,13 @@ export { extractHeadBoundary, extractCharset, extractBaseHrefInfo } from "./head
 export { extractHeadMeta } from "./headMeta";
 export { extractDocumentStructure } from "./structure";
 export { extractFonts, parseFontFaceCss } from "./fonts";
+export {
+  extractFaviconCandidates,
+  probeFaviconCandidates,
+  assessGoogleSerpEligibility,
+  buildFaviconReport,
+  decodeImageDimensions,
+} from "./favicons";
 
 /** Runs `fn`, swallowing any error so one broken field can never take down the whole page record. */
 function safe<T>(fn: () => T, fallback: T): T {
@@ -105,6 +113,11 @@ export function extractPage(artifact: FetchArtifact, scope: CrawlScope): Extract
     headMeta: safe(() => extractHeadMeta($), undefined),
     structure: safe(() => extractDocumentStructure($), undefined),
     fonts: safe(() => extractFonts($, artifact.finalUrl), undefined),
+    // Pure path only: probing costs network, so `effective` stays unresolved until a caller probes.
+    favicons: safe(() => {
+      const candidates = extractFaviconCandidates($, base, null);
+      return buildFaviconReport(candidates, null, assessGoogleSerpEligibility(candidates, { pageUrl: artifact.finalUrl }));
+    }, undefined),
     pageStats: safe(
       () => extractPageStats($, html, content.text, headers, artifact.httpVersion ?? null),
       {
