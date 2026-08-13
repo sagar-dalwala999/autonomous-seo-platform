@@ -92,6 +92,14 @@ export interface CrawlOptions {
   /** Capture a thumb+full screenshot per page. Off by default; forces pages that would
    * otherwise be static-only onto the Playwright pass, since a screenshot needs a browser. */
   screenshots?: boolean;
+  /** Probe image byte size + real header dimensions after the crawl. On by default; bounded by
+   * imageProbeCap unique URLs and rate-limited to maxRequestsPerSecond (same host we just crawled). */
+  imageSizes?: boolean;
+  imageProbeCap?: number;
+  /** Fetch every declared favicon candidate so `favicons.effective` can be resolved at all —
+   * markup alone cannot answer it (last-declared wins, with 404 fall-through). On by default;
+   * results are cached per URL across the whole crawl, so it costs a handful of requests. */
+  faviconProbe?: boolean;
 }
 
 export interface Redirect {
@@ -115,6 +123,49 @@ export interface LinkRecord {
   targetAttr: string | null;
 }
 
+/** Where an image reference was found. Only "img"/"input-image" can carry an alt attribute.
+ * "network" = observed as a browser response with no matching DOM node (canvas/JS-drawn assets). */
+export type ImageKind = "img" | "input-image" | "picture-source" | "background" | "svg-use" | "network";
+
+/** One srcset candidate. `width` and `density` are mutually exclusive per the HTML spec; a
+ * candidate with no descriptor at all is density 1. */
+export interface SrcSetCandidate {
+  url: string;
+  width: number | null;
+  density: number | null;
+  /** The descriptor exactly as authored ("640w", "2x", "" when absent) — evidence. */
+  raw: string;
+}
+
+/** A <picture> alternative. Sources never carry alt: the <img> inside the picture does. */
+export interface PictureSourceRecord {
+  srcset: SrcSetCandidate[];
+  /** <source src> is invalid inside <picture> but common in the wild — kept as evidence. */
+  src: string | null;
+  media: string | null;
+  type: string | null;
+  sizes: string | null;
+}
+
+/**
+ * Real asset weight + real pixel dimensions. Every field is null until something actually
+ * observed it; `sizeError` carries the reason instead of a fabricated byte count.
+ * Only an image record's primary `url` is probed — srcset candidate URLs are recorded but never
+ * fetched, since probing every candidate multiplies request cost by the candidate count.
+ */
+export interface ImageAssetSize {
+  bytes: number | null;
+  byteSource: "content-length" | "content-range" | "browser-transfer" | null;
+  /** Decoded from the file header (or the browser's naturalWidth) — declared sizes routinely lie. */
+  naturalWidth: number | null;
+  naturalHeight: number | null;
+  naturalSource: "header-decode" | "browser" | null;
+  /** HTTP status of the probe; null when the probe never reached a response. */
+  status: number | null;
+  /** Non-null whenever `bytes` is null, naming why (404, cap reached, timeout, …). */
+  sizeError: string | null;
+}
+
 export interface ImageRecord {
   url: string;
   /** null = alt attribute missing entirely; "" = present but empty. The distinction is evidence. */
@@ -123,6 +174,81 @@ export interface ImageRecord {
   height: number | null;
   /** Lowercased extension-derived format ("jpg", "png", "bmp", "webp", ...), null if none. */
   format: string | null;
+
+  /* ── v4 (extraction-correctness wave). Optional: pre-v4 runs lack them entirely. ── */
+  kind?: ImageKind;
+  /** Attribute the primary URL came from ("src", "data-src", "srcset", "style", "xlink:href"). */
+  source?: string;
+  srcset?: SrcSetCandidate[];
+  sizes?: string | null;
+  loading?: string | null;
+  decoding?: string | null;
+  fetchPriority?: string | null;
+  /** <picture> alternatives for this <img>; [] when it has no <picture> parent. */
+  pictureSources?: PictureSourceRecord[];
+  /** alt="" / role=presentation|none / aria-hidden=true — a declared-decorative image, so its
+   * empty alt is intentional and must not be reported as a missing one. */
+  decorative?: boolean;
+  /** Background kind only: the CSS property and (for <style> blocks) the selector it came from. */
+  cssProperty?: string;
+  cssSelector?: string | null;
+  /** Computed-style sweep only: "::before"/"::after" when the image came from a pseudo-element,
+   * null for the element itself. Absent when the record wasn't found via the computed sweep. */
+  pseudoElement?: "::before" | "::after" | null;
+  /** network kind only: Content-Type of the browser response, when observed. */
+  networkContentType?: string | null;
+  /** Layout box the browser gave the image, CSS px. Only set when a rendered pass measured it. */
+  renderedWidth?: number | null;
+  renderedHeight?: number | null;
+  /** The candidate the browser actually loaded. Differs from `url` whenever srcset or a
+   * <picture> source won, which is why asset sizes are not adopted from the browser in that case. */
+  currentSrc?: string | null;
+  asset?: ImageAssetSize;
+}
+
+/**
+ * Counts a rule can trust without re-deriving them. `altApplicable` — NOT images.length — is the
+ * missing-alt denominator: backgrounds and <picture><source> have no alt attribute to be missing.
+ */
+export interface ImageSummary {
+  total: number;
+  altApplicable: number;
+  missingAlt: number;
+  emptyAlt: number;
+  decorative: number;
+  withSrcset: number;
+  lazyLoaded: number;
+  eagerLoaded: number;
+  pictureCount: number;
+  backgroundCount: number;
+  /** data: URIs are inlined bytes, not fetchable assets — counted here, kept out of images[]. */
+  dataUriCount: number;
+  dataUriBytes: number;
+}
+
+/**
+ * One `url(...)` found by a browser-side computed-style sweep (getComputedStyle over every
+ * element + its ::before/::after), not by the regex-based inline/<style> parse in images.ts —
+ * catches external-stylesheet rules and cascade-computed values the static parse cannot see.
+ */
+export interface ComputedBackgroundHit {
+  url: string;
+  property: "background-image" | "border-image-source" | "mask-image" | "list-style-image";
+  pseudo: "::before" | "::after" | null;
+  /** Best-effort tag/id/class locator — getComputedStyle gives no CSS selector to report. */
+  locator: string | null;
+}
+
+/**
+ * One browser response observed during a Playwright pass, keyed by response URL. Exists to catch
+ * canvas/CSS/JS-injected image requests that never touch a DOM node an extractor could find.
+ */
+export interface NetworkObservedAsset {
+  url: string;
+  contentType: string | null;
+  status: number;
+  /** From Content-Length; only trustworthy when status is 2xx (a 404 body is not a byte size). */
+  bytes: number | null;
 }
 
 export interface VideoRecord {
@@ -170,6 +296,45 @@ export interface PageStats {
   httpVersion: string | null;
 }
 
+export interface ScriptResourceRecord {
+  /** null = inline script. */
+  url: string | null;
+  async: boolean;
+  defer: boolean;
+  /** type="module" — deferred by spec, so never render-blocking regardless of the attrs above. */
+  module: boolean;
+  inHead: boolean;
+  /** Byte length of the inline body (UTF-8); null for external scripts. */
+  inlineBytes: number | null;
+  /** External script with no async/defer/module sitting in <head> — parser-blocking by markup alone. */
+  renderBlocking: boolean;
+}
+
+export interface StylesheetResourceRecord {
+  url: string;
+  media: string | null;
+  inHead: boolean;
+  /** true unless `media` is print/speech-only — a coarse static heuristic, not a cascade evaluation. */
+  renderBlocking: boolean;
+}
+
+export interface PreloadResourceRecord {
+  url: string;
+  as: string | null;
+  type: string | null;
+  crossorigin: string | null;
+}
+
+/** Static (markup-only) resource inventory — no browser required, so it's populated on every page. */
+export interface ResourceHints {
+  scripts: ScriptResourceRecord[];
+  stylesheets: StylesheetResourceRecord[];
+  preloads: PreloadResourceRecord[];
+  inlineScriptBytesTotal: number;
+  renderBlockingScriptCount: number;
+  renderBlockingStylesheetCount: number;
+}
+
 /** Raw-vs-rendered divergence when a page was escalated to Chromium. */
 export interface RenderDivergence {
   titleChanged: boolean;
@@ -213,6 +378,67 @@ export interface StructuredDataRecord {
   parseError: string | null;
 }
 
+export type StructuredDataFormat = "json-ld" | "microdata" | "rdfa";
+
+/**
+ * "no-profile" = a real schema.org type we deliberately don't gate (no Google rich result);
+ * "unknown-type" = a @type that isn't schema.org at all (typo/invented) — a different finding.
+ */
+export type StructuredDataItemStatus = "validated" | "no-profile" | "unknown-type" | "missing-type" | "reference";
+
+export interface StructuredDataValidation {
+  /** Profile actually applied after subtype aliasing (NewsArticle -> Article), null when none. */
+  profile: string | null;
+  status: StructuredDataItemStatus;
+  /** Google rich-result requirements not satisfied. An "a or b" group is one entry, joined by " or ". */
+  missingRequired: string[];
+  missingRecommended: string[];
+}
+
+/** One schema.org node, normalized to a JSON-LD-shaped object whatever syntax it was written in. */
+export interface StructuredDataItem {
+  format: StructuredDataFormat;
+  /** schema.org type names with any URL/prefix stripped. Empty when the node declared none. */
+  types: string[];
+  /** Where the node sits: "[0].@graph[2].author", "microdata[1].offers", "rdfa[0]". */
+  path: string;
+  /** Index into structuredData[] for JSON-LD; null for DOM-sourced formats. */
+  blockIndex: number | null;
+  node: Record<string, unknown>;
+  validation: StructuredDataValidation;
+}
+
+export interface StructuredDataError {
+  kind: "malformed-json" | "empty-block" | "missing-context" | "invalid-context" | "missing-type" | "unknown-type";
+  format: StructuredDataFormat;
+  blockIndex: number | null;
+  message: string;
+  value: string | null;
+}
+
+export interface StructuredDataCounts {
+  jsonLdBlocks: number;
+  jsonLdParseErrors: number;
+  items: number;
+  jsonLdItems: number;
+  microdataItems: number;
+  rdfaItems: number;
+  validatedItems: number;
+  itemsMissingRequired: number;
+  unknownTypes: number;
+}
+
+/** All three syntaxes + Google rich-result validation. structuredData[] stays JSON-LD-only. */
+export interface StructuredDataReport {
+  items: StructuredDataItem[];
+  counts: StructuredDataCounts;
+  errors: StructuredDataError[];
+  /** Distinct types across every format, sorted. */
+  types: string[];
+  /** True when the per-page item cap was reached — items[] may be incomplete. */
+  truncated: boolean;
+}
+
 export interface RobotsMeta {
   /** Raw values from <meta name="robots"> (+ googlebot variants) AND X-Robots-Tag headers. */
   meta: string[];
@@ -231,6 +457,33 @@ export interface PageContent {
   /** Words inside [aria-hidden="true"]. Counted in `text` (Google indexes them) but tracked
    * separately because they're hidden from assistive tech — an a11y finding, not an SEO one. */
   ariaHiddenWordCount?: number;
+  readability?: ReadabilityReport;
+  keywordDensity?: KeywordDensityReport;
+}
+
+/** Flesch Reading Ease + Flesch-Kincaid Grade Level — the only content-quality measure in this
+ * dataset beyond raw word count. Null fields mean too little text to score, not a zero score. */
+export interface ReadabilityReport {
+  fleschReadingEase: number | null;
+  fleschKincaidGrade: number | null;
+  sentences: number;
+  syllables: number;
+  averageWordsPerSentence: number;
+  /** Plain-language reading of fleschReadingEase, e.g. "plain English — 8th to 9th grade". */
+  band: string;
+}
+
+export interface KeywordCount {
+  term: string;
+  count: number;
+  /** Share of all non-stopword terms, as a percentage. */
+  density: number;
+}
+
+export interface KeywordDensityReport {
+  totalTerms: number;
+  oneWord: KeywordCount[];
+  twoWord: KeywordCount[];
 }
 
 export interface CrawlMeta {
@@ -345,6 +598,87 @@ export interface FaviconReport {
   googleSerpBlockers: string[];
 }
 
+/* ── v4 performance contract. HTTP timing and browser wall-clock are deliberately separate
+ * fields: conflating them produced 20 false "slow page" findings in a sibling team's audit. ── */
+
+/** Phases of the HTTP request for the page document itself — transport only, no rendering. */
+export interface HttpTimings {
+  dnsMs: number | null;
+  connectMs: number | null;
+  tlsMs: number | null;
+  /** Request start → first response byte. This is the only field that means TTFB. */
+  ttfbMs: number | null;
+  /** First response byte → last response byte. */
+  downloadMs: number | null;
+  totalMs: number | null;
+  source: "http-transport" | "browser-request-timing";
+}
+
+/** The browser's own navigation timeline. Wall-clock and includes script execution — never
+ * comparable to HttpTimings and never a substitute for it. */
+export interface NavigationTimings {
+  ttfbMs: number | null;
+  domInteractiveMs: number | null;
+  domContentLoadedMs: number | null;
+  loadEventMs: number | null;
+  responseEndMs: number | null;
+  transferSizeBytes: number | null;
+  encodedBodySizeBytes: number | null;
+  decodedBodySizeBytes: number | null;
+}
+
+/**
+ * LAB Core Web Vitals — one cold load in our own headless Chromium, NOT Google field/CrUX data
+ * and not comparable to a Search Console score. Read `note` and `notMeasured` before quoting any
+ * number here: observation stops when the crawler scrolls, so LCP is a lower bound.
+ */
+export interface LabWebVitals {
+  lcpMs: number | null;
+  /** Tag/id of the element the browser attributed LCP to, and its URL when it was an image. */
+  lcpElement: string | null;
+  lcpUrl: string | null;
+  cls: number | null;
+  fcpMs: number | null;
+  /** Long tasks (>50ms) observed, and the blocking time above 50ms summed across them. */
+  longTasks: number | null;
+  totalBlockingTimeMs: number | null;
+  /** ms after navigation start at which measurement stopped. */
+  observationEndedAtMs: number | null;
+  note: string;
+  /** Metrics this pass cannot produce at all — never report these as zero or as passing. */
+  notMeasured: string[];
+}
+
+/** Resource counts and page weight from the browser's resource timeline. */
+export interface ResourceSummary {
+  total: number;
+  byType: Record<string, number>;
+  transferBytesByType: Record<string, number>;
+  totalTransferBytes: number | null;
+  totalDecodedBytes: number | null;
+  /** Entries reporting transferSize 0 (cache hit or opaque cross-origin): the byte totals are a
+   * floor, not an exact page weight, whenever this is above zero. */
+  zeroTransferCount: number;
+  /** Resource types the crawler ABORTED before they loaded. Page weight excludes them entirely,
+   * so it is not the weight a real visitor downloads. Empty when nothing was blocked. */
+  blockedTypes: string[];
+  thirdPartyRequests: number;
+  thirdPartyTransferBytes: number | null;
+}
+
+export interface PagePerformance {
+  /** HTTP-transport total for the document. Never browser wall-clock — see browserWallMs. */
+  responseTimeMs: number | null;
+  http?: HttpTimings | null;
+  /** Playwright pass only; null on the static pass. */
+  navigation?: NavigationTimings | null;
+  labWebVitals?: LabWebVitals | null;
+  resources?: ResourceSummary | null;
+  /** Crawler-measured wall-clock of the whole browser visit, including settle waits. Useful for
+   * crawl-cost accounting; useless as a page-speed metric — do not threshold on it. */
+  browserWallMs?: number | null;
+}
+
 export interface HeadingRecord {
   level: 1 | 2 | 3 | 4 | 5 | 6;
   text: string;
@@ -422,6 +756,14 @@ export interface ExtractionResult {
   favicons?: FaviconReport;
   structure?: DocumentStructure;
   fonts?: FontReport;
+  /** v4 fields. CSS/svg-use image references are kept OUT of images[] on purpose: they have no
+   * alt attribute, so folding them in would inflate every missing-alt denominator. */
+  backgroundImages?: ImageRecord[];
+  imageSummary?: ImageSummary;
+  /** Microdata + RDFa + validated JSON-LD nodes. Optional: pre-wave runs on disk have no report. */
+  structuredDataReport?: StructuredDataReport;
+  /** Static script/stylesheet/preload inventory — markup-only, no browser required. */
+  resourceHints?: ResourceHints;
 }
 
 export interface CrawledPage extends ExtractionResult {
@@ -432,7 +774,7 @@ export interface CrawledPage extends ExtractionResult {
   statusCode: number | null;
   redirectChain: Redirect[];
   headers: Record<string, string>;
-  performance: { responseTimeMs: number | null };
+  performance: PagePerformance;
   renderedWith: "http" | "playwright";
   /** Why JS escalation fired; [] when renderedWith === "http". */
   renderSignals: string[];
@@ -466,6 +808,51 @@ export interface FailureRecord {
   parentUrl: string | null;
 }
 
+/**
+ * Which named AI-crawler agent verdicts exist. Four, not three: `partly blocked` is distinct from
+ * `blocked` because collapsing "some paths disallowed" into a boolean misreports the site, and
+ * `ignores robots.txt` is distinct from both because a handful of agents fetch on behalf of a
+ * person who asked for that exact page and never consult robots.txt at all — "allowed"/"blocked"
+ * would both imply a permission question that was never asked.
+ */
+export type AiCrawlerAccess = "allowed" | "blocked" | "partly blocked" | "ignores robots.txt";
+
+/** One Allow/Disallow directive from robots.txt, with its 1-based source line for citation. */
+export interface AiCrawlerSourceRule {
+  directive: "Allow" | "Disallow";
+  value: string;
+  line: number;
+}
+
+/** What robots.txt says about one named AI-crawler agent, and the exact rule that decided it. */
+export interface AiCrawlerRule {
+  agent: string;
+  /** Who operates it and what it does, in plain English. */
+  who: string;
+  access: AiCrawlerAccess;
+  /** The group the verdict came from: the agent's own name token, "*", or "none" when robots.txt
+   * names neither the agent nor a wildcard group. */
+  matchedGroup: string;
+  /** Source line of the matched group's `User-agent:` declaration; null when matchedGroup is "none". */
+  matchedGroupLine: number | null;
+  /** The Disallow (and, when present, Allow) rules in the matched group, so the verdict can be
+   * checked by hand against the actual robots.txt text. */
+  matchedRules: AiCrawlerSourceRule[];
+}
+
+/**
+ * `/llms.txt` presence — reported for information only. Deliberately no scoring field: Google's
+ * AI-optimization guidance says Search ignores the file, so publishing one neither helps nor hurts
+ * visibility there, and no rule in this codebase's rulebook may score it either way.
+ */
+export interface LlmsTxtInfo {
+  present: boolean;
+  url: string;
+  statusCode: number | null;
+  bytes: number;
+  fetchedAt: string;
+}
+
 /** Serializable robots evidence (RobotsInfo minus the matcher function). */
 export interface RobotsEvidence {
   url: string;
@@ -474,29 +861,114 @@ export interface RobotsEvidence {
   sitemaps: string[];
   parseStatus: "ok" | "empty" | "unavailable" | "error";
   fetchedAt: string;
+  /** Seconds between requests requested by the matching Crawl-delay directive; null when absent.
+   * Optional so runs stored before this field parse unchanged. */
+  crawlDelay?: number | null;
+  /** The 13-agent AI-crawler access table, computed from `content` by a reporting-only group
+   * parser (discovery/aiCrawlers.ts) — separate from the RFC 9309 enforcement path this evidence's
+   * own isAllowed() uses. Optional so runs stored before this field parse unchanged. */
+  aiCrawlers?: AiCrawlerRule[];
+  /** `/llms.txt` presence, fetched alongside robots.txt. Optional so runs stored before this field
+   * parse unchanged. */
+  llmsTxt?: LlmsTxtInfo;
 }
 
 export interface RobotsInfo extends RobotsEvidence {
   isAllowed(url: string, userAgent?: string): boolean;
 }
 
+/** One <image:image> child of a sitemap <url>. */
+export interface SitemapImageEntry {
+  loc: string;
+  title?: string;
+  caption?: string;
+  geoLocation?: string;
+  license?: string;
+}
+
+/** One <video:video> child of a sitemap <url>. duration is seconds, as authored. */
+export interface SitemapVideoEntry {
+  thumbnailLoc?: string;
+  title?: string;
+  description?: string;
+  contentLoc?: string;
+  playerLoc?: string;
+  duration?: number;
+  publicationDate?: string;
+  familyFriendly?: string;
+}
+
+/** The <news:news> child of a sitemap <url> (at most one per URL). */
+export interface SitemapNewsEntry {
+  publicationName?: string;
+  publicationLanguage?: string;
+  publicationDate?: string;
+  title?: string;
+}
+
 export interface SitemapUrlEntry {
   url: string;
   sourceSitemap: string;
+  /** Raw <lastmod> exactly as authored — trust is assessed separately, never inferred here. */
+  lastmod?: string;
+  changefreq?: string;
+  priority?: number;
+  images?: SitemapImageEntry[];
+  videos?: SitemapVideoEntry[];
+  news?: SitemapNewsEntry;
+  /** Absent means "sitemap" — feed-discovered URLs are tagged so consumers can separate them. */
+  sourceKind?: "sitemap" | "feed";
 }
 
 export interface SitemapFileRecord {
   url: string;
   statusCode: number | null;
-  kind: "urlset" | "index" | "unknown";
+  kind: "urlset" | "index" | "unknown" | "rss" | "atom" | "jsonfeed";
   urlCount: number;
   error: string | null;
+  /** True when the file was served gzipped and had to be decompressed before parsing. */
+  gzipped?: boolean;
+  /** The sitemap file itself lives on a different host than the crawl origin (aliases not applied). */
+  crossHost?: boolean;
+  /** How many of this file's URLs point off the crawl origin — non-zero with urlCount > 0 is the
+   * "sitemap exists but describes another host" case, which reads as "no sitemap" if not recorded. */
+  crossHostUrlCount?: number;
+  imageCount?: number;
+  videoCount?: number;
+  newsCount?: number;
+}
+
+/** Counters behind a <lastmod> trust judgement. Data only — thresholds belong to the rulebook. */
+export interface SitemapLastmodTrust {
+  totalUrls: number;
+  withLastmod: number;
+  /** Present but not a W3C Datetime (e.g. "15/01/2024", RFC-822) — a generator defect. */
+  invalid: number;
+  distinctValues: number;
+  /** Dated after the fetch, beyond a 24h clock-skew allowance. */
+  future: number;
+  /** Stamped within an hour of the fetch — a generator writing "now" on every URL. */
+  withinLastHour: number;
+  allIdentical: boolean;
+  newest: string | null;
+  oldest: string | null;
+  verdict:
+    | "absent"
+    | "trustworthy"
+    | "partial"
+    | "suspect-uniform"
+    | "suspect-future"
+    | "suspect-invalid"
+    | "suspect-stamped-now";
 }
 
 export interface SitemapResult {
   entries: SitemapUrlEntry[];
   files: SitemapFileRecord[];
   errors: string[];
+  /** Entries whose <loc> host differs from the crawl origin. */
+  crossHostEntryCount?: number;
+  lastmodTrust?: SitemapLastmodTrust;
 }
 
 /** ---------- POC-2 analysis contract (brief §6b, D-08: deterministic rulebook) ---------- */
@@ -541,7 +1013,8 @@ export interface AnalysisReport {
   generatedAt: string;
   rulebookVersion: string;
   configSnapshot: unknown;
-  /** Pages without error-severity issues ÷ analyzed pages × 100, one decimal. */
+  /** 0-100, one decimal. Severity-weighted damage per failing check, saturated so a very broken
+   * site still ranks against another — see computeHealthScoreDetail for the formula. */
   healthScore: number;
   pagesAnalyzed: number;
   counts: Record<IssueSeverity, number>;

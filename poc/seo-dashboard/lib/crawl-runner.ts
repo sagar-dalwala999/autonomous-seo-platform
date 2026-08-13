@@ -26,7 +26,7 @@ const STORAGE_ROOT = process.env.CRAWLER_STORAGE_DIR
 
 const RUNS_DIR = path.join(STORAGE_ROOT, "runs");
 
-export type CrawlState = "running" | "done" | "failed";
+export type CrawlState = "running" | "done" | "failed" | "cancelled";
 
 /** Contract mirrors CrawlAuth/CrawlSafety in ../seo-crawler-poc/src/models/types.ts exactly. */
 export interface CrawlAuthInput {
@@ -50,6 +50,7 @@ export interface CrawlStatus {
   maxDepth: number | null;
   respectRobots: boolean;
   render: "auto" | "never" | "always";
+  screenshots: boolean;
   aliases: string[];
   /** Method only — never the credential values. See "credential hygiene" note in startCrawl. */
   authMethod: "none" | "basic" | "cookie" | "header";
@@ -65,6 +66,8 @@ export interface StartCrawlInput {
   maxDepth?: number | null;
   respectRobots?: boolean;
   render?: "auto" | "never" | "always";
+  /** --screenshots. Off by default: it forces a browser render on every page, not just JS ones. */
+  screenshots?: boolean;
   aliases?: string[];
   /** Credentials for protected routes; null/undefined = anonymous crawl. Never persisted — see startCrawl. */
   auth?: CrawlAuthInput | null;
@@ -236,6 +239,7 @@ function validate(input: StartCrawlInput): {
   maxDepth: number | null;
   respectRobots: boolean;
   render: "auto" | "never" | "always";
+  screenshots: boolean;
   aliases: string[];
   auth: CrawlAuthInput | null;
   safety: CrawlSafetyInput | null;
@@ -277,14 +281,24 @@ function validate(input: StartCrawlInput): {
   const auth = validateAuth(input.auth);
   const safety = validateSafety(input.safety, auth !== null);
 
-  return { url, maxPages, maxDepth, respectRobots: input.respectRobots ?? true, render, aliases, auth, safety };
+  return {
+    url,
+    maxPages,
+    maxDepth,
+    respectRobots: input.respectRobots ?? true,
+    render,
+    screenshots: input.screenshots === true,
+    aliases,
+    auth,
+    safety,
+  };
 }
 
 export async function startCrawl(input: StartCrawlInput): Promise<CrawlStatus> {
   const running = await findRunningCrawl();
   if (running) throw new CrawlConflictError(running);
 
-  const { url, maxPages, maxDepth, respectRobots, render, aliases, auth, safety } = validate(input);
+  const { url, maxPages, maxDepth, respectRobots, render, screenshots, aliases, auth, safety } = validate(input);
 
   const isLocal = url.hostname === "localhost" || /^127\./.test(url.hostname);
   const rps = isLocal ? 10 : 2;
@@ -307,6 +321,7 @@ export async function startCrawl(input: StartCrawlInput): Promise<CrawlStatus> {
     "storage",
   ];
   if (!respectRobots) args.push("--no-robots");
+  if (screenshots) args.push("--screenshots");
   if (aliases.length > 0) args.push("--alias", aliases.join(","));
   if (maxDepth !== null) args.push("--max-depth", String(maxDepth));
 
@@ -352,6 +367,7 @@ export async function startCrawl(input: StartCrawlInput): Promise<CrawlStatus> {
     maxDepth,
     respectRobots,
     render,
+    screenshots,
     aliases,
     authMethod: deriveAuthMethod(auth),
     startedAt: new Date().toISOString(),
@@ -361,13 +377,25 @@ export async function startCrawl(input: StartCrawlInput): Promise<CrawlStatus> {
   await writeStatus(status);
 
   child.on("exit", (code) => {
-    void writeStatus({
-      ...status,
-      state: code === 0 || code === 2 ? "done" : "failed",
-      endedAt: new Date().toISOString(),
-      exitCode: code,
-    });
-    if (code === 0 || code === 2) spawnAnalyze(runId);
+    void (async () => {
+      // Races lib/crawl-control.ts's cancelCrawl(), which kills this same pid: taskkill/SIGTERM
+      // returning does not mean this "exit" event has already fired, so whichever write lands
+      // last wins with no ordering guarantee. Re-read the live file rather than trusting the
+      // `status` closure — if cancelCrawl already recorded "cancelled", a killed process legitimately
+      // exiting non-zero must not clobber that back to a plain "failed" (and silently drop the note).
+      const current = await readStatus(runId);
+      if (current?.state === "cancelled") {
+        await writeStatus({ ...current, exitCode: code });
+        return;
+      }
+      await writeStatus({
+        ...status,
+        state: code === 0 || code === 2 ? "done" : "failed",
+        endedAt: new Date().toISOString(),
+        exitCode: code,
+      });
+      if (code === 0 || code === 2) spawnAnalyze(runId);
+    })();
   });
   child.unref();
 

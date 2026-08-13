@@ -2,6 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { NextRequest } from "next/server";
 import { runsDir } from "@/lib/data";
+import { requireApiSession } from "@/lib/auth-guard";
 
 // Same guard as app/api/raw and app/api/replay: dots are legal in ids, so ".." alone clears a
 // charset check and escapes via path.join. Dot-segment rejection AND the containment assert are
@@ -13,6 +14,9 @@ function isSafeId(id: string): boolean {
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ runId: string; pageId: string }> }) {
+  const __auth = await requireApiSession();
+  if ("response" in __auth) return __auth.response;
+
   const { runId, pageId } = await params;
   if (!isSafeId(runId) || !isSafeId(pageId)) {
     return Response.json({ error: "Invalid run or page id" }, { status: 400 });

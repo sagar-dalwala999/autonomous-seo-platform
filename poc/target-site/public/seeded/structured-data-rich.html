@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en" prefix="og: https://ogp.me/ns# article: https://ogp.me/ns/article#">
+  <head>
+    <meta charset="utf-8" />
+    <title>Ridgeline 45 Pack — Summit Trail Gear</title>
+    <meta name="description" content="Seeded fixture exercising JSON-LD, microdata and RDFa on one page." />
+
+    <!-- Open Graph / Twitter: must NEVER be counted as RDFa -->
+    <meta property="og:title" content="Ridgeline 45 Pack" />
+    <meta property="og:type" content="product" />
+    <meta property="og:url" content="http://localhost:3105/seeded/structured-data-rich.html" />
+    <meta property="og:image" content="http://localhost:3105/next.svg" />
+    <meta property="og:site_name" content="Summit Trail Gear" />
+    <meta property="article:published_time" content="2026-01-04T09:00:00Z" />
+    <meta property="fb:app_id" content="1234567890" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "http://localhost:3105/#org",
+            "name": "Summit Trail Gear",
+            "url": "http://localhost:3105/",
+            "logo": "http://localhost:3105/next.svg"
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Home", "item": "http://localhost:3105/" },
+              { "@type": "ListItem", "item": "http://localhost:3105/products" }
+            ]
+          },
+          {
+            "@type": "Article",
+            "headline": "Fitting the Ridgeline 45",
+            "author": { "@id": "http://localhost:3105/#org" }
+          },
+          { "@type": "Prodcut", "name": "Typo type — should report as unknown, not malformed" }
+        ]
+      }
+    </script>
+
+    <script type="application/ld+json">
+      { "@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [ { "@type": "Question",
+    </script>
+  </head>
+  <body>
+    <h1>Ridgeline 45 Pack</h1>
+
+    <div itemscope itemtype="https://schema.org/Product">
+      <h2 itemprop="name">Ridgeline 45</h2>
+      <img itemprop="image" src="/next.svg" alt="Ridgeline 45" />
+      <p itemprop="description">45L internal-frame pack.</p>
+      <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+        <meta itemprop="priceCurrency" content="USD" />
+        <span itemprop="price">189.00</span>
+        <link itemprop="availability" href="https://schema.org/InStock" />
+      </div>
+      <div itemprop="aggregateRating" itemscope itemtype="https://schema.org/AggregateRating">
+        <span itemprop="ratingValue">4.6</span>
+      </div>
+    </div>
+
+    <div itemscope itemtype="https://schema.org/LocalBusiness">
+      <span itemprop="name">Summit Outfitters</span>
+      <span itemprop="telephone">+1-555-0100</span>
+    </div>
+
+    <div vocab="https://schema.org/" typeof="Recipe">
+      <h2 property="name">Trail bars</h2>
+      <span property="recipeIngredient">Oats</span>
+      <span property="recipeIngredient">Honey</span>
+      <div property="author" typeof="Person"><span property="name">Ada Lovelace</span></div>
+    </div>
+
+    <div prefix="schema: https://schema.org/" typeof="schema:Event">
+      <span property="schema:name">Trail Day 2026</span>
+      <time property="schema:startDate" datetime="2026-06-01T09:00">June 1</time>
+    </div>
+  </body>
+</html>

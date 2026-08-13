@@ -14,7 +14,20 @@
     "redirectChainMax": "Screaming Frog 'Redirect Chains' report flags any chain longer than 1 hop",
     "nearDupWordCountDeltaPct": "DEPRECATED (slice C3): superseded by nearDupSimilarity, a real MinHash/Jaccard score. Left as-is, no longer read by near-duplicate-content.",
     "nearDupSimilarity": "slice C3: 5-word-shingle MinHash+LSH estimated Jaccard threshold. 0.75, not the originally-planned 0.9 -- the seeded near-dup fixture pair (/blog/winter-hiking-checklist vs /blog/winter-day-hike-checklist, manifest #18) measures ~0.824 true Jaccard at shingle size 5, so 0.9 would silently miss it; 0.75 leaves margin below that measurement while staying well above the near-zero overlap unrelated same-length pages produce.",
-    "weakInlinkCount": "spec.md A4 scope: pages with exactly 1 inlink are 'weakly-linked'"
+    "weakInlinkCount": "spec.md A4 scope: pages with exactly 1 inlink are 'weakly-linked'",
+    "jsOnlyContentRatio": "content-requires-javascript: share of the RENDERED word count that must be absent from the raw HTML before a page counts as render-dependent. 0.5 (half the copy) is a deliberately conservative bar -- the four render-escalated pages in storage/runs that carry a real divergence measure 0.98-1.00, so the finding stays about pages that are genuinely empty without JS, not pages with a JS-injected sidebar. Paired with thinContentWords as an absolute floor so a tiny page cannot clear the ratio on a handful of words.",
+    "excessiveLinksCount": "Kishan's rules.js 'excessive-links': >300 internal+external links on one page usually signals a mega-menu or unpaginated archive rather than a deliberate choice.",
+    "deepPageDepth": "Kishan's rules.js 'deep-page': depth > 4 clicks from the start URL reads as buried and gets crawled/ranked less.",
+    "soft404MaxWords": "Kishan's rules.js 'soft-404': <=120 words AND 404-style title/H1 wording on a 200 status -- a real 404 page dressed up as a normal response.",
+    "longContentNoSubheadingsWords": "Jemish's score.ts 'no-subheadings': >300 words with <=1 subheading (h2+h3) has nothing breaking up the copy.",
+    "emptyAnchorRatioMax": "Jemish's score.ts 'no-anchor-text': share of a page's internal links with blank anchor text past which the ratio itself is the finding (not just one link).",
+    "noCompressionMinBytes": "Kishan's rules.js 'no-compression': absent Content-Encoding is only worth flagging once the response is big enough to matter (>2000 bytes).",
+    "fleschReadingEaseMin": "Jemish's analysis.ts 'readability': Flesch Reading Ease < 30 is his own easeBand() cutoff for 'very hard -- postgraduate'.",
+    "oversizedHtmlBytes": "Kishan's rules.js 'oversized-html' (site rule): 500KB HTML document, before subresources.",
+    "healthErrorWeight": "Health score: damage points a failing error-severity check costs at full reach. 10/3/1 gives every severity step roughly 3x the weight of the one below, so one error outweighs three warnings or ten notices and a wall of notices can no longer dilute a genuine error.",
+    "healthWarningWeight": "Health score: damage points a failing warning-severity check costs at full reach (rationale under healthErrorWeight).",
+    "healthNoticeWeight": "Health score: damage points a failing notice-severity check costs at full reach (rationale under healthErrorWeight).",
+    "healthHalfScoreDamage": "Health score saturation constant k in score = 100 x k/(k + damage). Set equal to healthErrorWeight, i.e. the anchor is 'one error-severity defect on every page it could be checked on halves the score'. Saturating rather than subtractive so two badly-broken sites still rank against each other instead of both pinning to 0 -- the failure that made the pre-1.0 model useless."
   },
   "rules": {},
   "thresholds": {
@@ -35,6 +48,19 @@
     "descMinPx": 400,
     "urlMaxChars": 115,
     "sitemapMaxUrls": 50000,
-    "sitemapMaxBytes": 52428800
+    "sitemapMaxBytes": 52428800,
+    "jsOnlyContentRatio": 0.5,
+    "healthErrorWeight": 10,
+    "healthWarningWeight": 3,
+    "healthNoticeWeight": 1,
+    "healthHalfScoreDamage": 10,
+    "excessiveLinksCount": 300,
+    "deepPageDepth": 4,
+    "soft404MaxWords": 120,
+    "longContentNoSubheadingsWords": 300,
+    "emptyAnchorRatioMax": 0.3,
+    "noCompressionMinBytes": 2000,
+    "fleschReadingEaseMin": 30,
+    "oversizedHtmlBytes": 512000
   }
 }

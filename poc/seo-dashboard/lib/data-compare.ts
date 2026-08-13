@@ -86,9 +86,9 @@ function issueKey(ruleId: string, url: string | null): string {
 }
 
 export async function computeDiff(baseRunId: string, headRunId: string): Promise<CrawlDiff> {
-  const [{ items: basePages }, { items: headPages }, baseReport, headReport] = await Promise.all([
-    getPages(baseRunId, {}),
-    getPages(headRunId, {}),
+  const [basePages, headPages, baseReport, headReport] = await Promise.all([
+    getPages(baseRunId),
+    getPages(headRunId),
     readAnalysisReport(baseRunId),
     readAnalysisReport(headRunId),
   ]);

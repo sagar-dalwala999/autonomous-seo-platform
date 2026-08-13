@@ -1,7 +1,8 @@
 /** JSON-LD structured-data rule pack. */
 import type { Issue, RuleMeta } from "../../../models/types";
 import type { PageRule } from "./index";
-import { issueFor } from "./shared";
+import { capturedList, issueFor } from "./shared";
+import { label, scorable, usableReport } from "./structured-data-report";
 
 /**
  * POC subset of Google rich-result required properties (not the full spec — e.g. real Product
@@ -28,6 +29,17 @@ const TYPE_URL_HINTS: Record<string, string[]> = {
   Book: ["book", "books"],
 };
 
+/** Depth-bounded @type scan — VideoObject is routinely nested inside @graph or an Article's
+ * `video` property, so a top-level type check alone would report false gaps. */
+function hasTypeAnywhere(node: unknown, wanted: string, depth = 0): boolean {
+  if (depth > 8 || node === null || typeof node !== "object") return false;
+  if (Array.isArray(node)) return node.some((child) => hasTypeAnywhere(child, wanted, depth + 1));
+  const record = node as Record<string, unknown>;
+  const type = record["@type"];
+  if (type === wanted || (Array.isArray(type) && type.includes(wanted))) return true;
+  return Object.values(record).some((child) => hasTypeAnywhere(child, wanted, depth + 1));
+}
+
 function typeOf(parsed: unknown): string | null {
   if (!parsed || typeof parsed !== "object") return null;
   const t = (parsed as Record<string, unknown>)["@type"];
@@ -48,6 +60,19 @@ function parseError(): PageRule {
   return {
     meta,
     evaluate(page, config) {
+      const report = usableReport(page);
+      if (report !== null) {
+        // The report separates a genuinely malformed block from an empty one; structuredData[]
+        // records both as a parse error, which mislabels a templating bug as broken JSON.
+        const malformed = report.errors.map((error, i) => ({ error, i })).filter(({ error }) => error.kind === "malformed-json");
+        return malformed.map(({ error, i }) =>
+          issueFor(meta, config, page, {
+            message: error.message,
+            evidence: [{ field: `structuredDataReport.errors[${i}]`, value: { blockIndex: error.blockIndex, format: error.format } }],
+          }),
+        );
+      }
+      if (!capturedList(page.structuredData)) return null;
       const offenders = page.structuredData.map((sd, i) => ({ sd, i })).filter(({ sd }) => sd.parseError !== null);
       if (offenders.length === 0) return [];
       return offenders.map(({ sd, i }) =>
@@ -76,6 +101,26 @@ function missingRequiredProperty(): PageRule {
     meta,
     evaluate(page, config) {
       const issues: Issue[] = [];
+      const report = usableReport(page);
+      if (report !== null) {
+        for (const { item, i } of scorable(report)) {
+          if (item.validation.missingRequired.length === 0) continue;
+          issues.push(
+            issueFor(meta, config, page, {
+              message: `${label(item.types)} (${item.format}) is missing required propert${item.validation.missingRequired.length === 1 ? "y" : "ies"}: ${item.validation.missingRequired.join(", ")}.`,
+              evidence: [
+                { field: `structuredDataReport.items[${i}].validation.missingRequired`, value: item.validation.missingRequired },
+                { field: `structuredDataReport.items[${i}].path`, value: item.path },
+                { field: `structuredDataReport.items[${i}].types`, value: item.types },
+                { field: `structuredDataReport.items[${i}].format`, value: item.format },
+              ],
+              threshold: `Google rich-result profile: ${item.validation.profile ?? label(item.types)}`,
+            }),
+          );
+        }
+        return issues;
+      }
+      if (!capturedList(page.structuredData)) return null;
       for (let i = 0; i < page.structuredData.length; i++) {
         const sd = page.structuredData[i]!;
         if (sd.parseError !== null || sd.parsed === null || typeof sd.parsed !== "object") continue;
@@ -102,27 +147,35 @@ function typeMismatch(): PageRule {
     id: "structured-data-type-mismatch",
     category: "structured-data",
     defaultSeverity: "warning",
-    description: "Structured-data @type doesn't match the page's URL context (heuristic — see module doc comment).",
+    description:
+      "A topic-specific @type whose URL gives no matching signal AND which is also missing required properties — together these read as " +
+      "boilerplate markup pasted onto the wrong template. The URL keyword test alone is too weak to report (a real recipe at /blog/best-brownies " +
+      "would fire), so it only counts when the node is independently incomplete.",
     howToFix: "Use the schema.org type that matches this page's actual content, or remove the mismatched block.",
-    dataRequirements: [],
+    dataRequirements: ["structuredDataReport"],
   };
   return {
     meta,
     evaluate(page, config) {
+      const report = usableReport(page);
+      if (report === null) return null;
+      // Corroborate against everything the page says about itself, not just the slug — a real
+      // recipe at /blog/best-brownies talks about cooking in its own copy.
+      const haystack = [page.url, page.title ?? "", ...page.headings.h1, page.content.text].join(" ").toLowerCase();
       const issues: Issue[] = [];
-      for (let i = 0; i < page.structuredData.length; i++) {
-        const sd = page.structuredData[i]!;
-        if (sd.parseError !== null || sd.parsed === null) continue;
-        const type = typeOf(sd.parsed);
-        if (type === null) continue;
-        const hints = TYPE_URL_HINTS[type];
-        if (!hints) continue;
-        const urlLower = page.url.toLowerCase();
-        if (hints.some((hint) => urlLower.includes(hint))) continue;
+      for (const { item, i } of scorable(report)) {
+        if (item.validation.missingRequired.length === 0) continue;
+        const type = item.types.find((t) => TYPE_URL_HINTS[t] !== undefined);
+        if (type === undefined) continue;
+        if (TYPE_URL_HINTS[type]!.some((hint) => haystack.includes(hint))) continue;
         issues.push(
           issueFor(meta, config, page, {
-            message: `${type} structured data present but the URL gives no "${type}" content signal.`,
-            evidence: [{ field: `structuredData[${i}].parsed.@type`, value: type }],
+            message: `${type} markup but nothing in the URL, title, H1 or body copy signals "${type}", and the node is also missing ${item.validation.missingRequired.join(", ")}.`,
+            evidence: [
+              { field: `structuredDataReport.items[${i}].types`, value: item.types },
+              { field: `structuredDataReport.items[${i}].validation.missingRequired`, value: item.validation.missingRequired },
+              { field: "url", value: page.url },
+            ],
           }),
         );
       }
@@ -131,6 +184,41 @@ function typeMismatch(): PageRule {
   };
 }
 
+function videoEmbedWithoutSchema(): PageRule {
+  const meta: RuleMeta = {
+    id: "video-embed-without-schema",
+    category: "structured-data",
+    defaultSeverity: "notice",
+    description:
+      "Page embeds a YouTube/Vimeo video but carries no VideoObject structured data, so it cannot appear in Google's video results. " +
+      "Deliberately limited to provider embeds — a bare <video> file is usually a decorative background loop, not indexable content.",
+    howToFix: "Add a VideoObject block with name, description, thumbnailUrl and uploadDate for the embedded video.",
+    dataRequirements: ["videos"],
+  };
+  return {
+    meta,
+    evaluate(page, config) {
+      // videos[] is typed required but 1190 stored pages predate media extraction.
+      if (!capturedList(page.videos) || !capturedList(page.structuredData)) return null;
+      const report = usableReport(page);
+      // A truncated report's types[] is taken after the item cap, so absence proves nothing.
+      if (report?.truncated) return null;
+      const embeds = page.videos.map((v, i) => ({ v, i })).filter(({ v }) => v.kind === "youtube" || v.kind === "vimeo");
+      if (embeds.length === 0) return [];
+      const declared = report
+        ? report.types.includes("VideoObject")
+        : page.structuredData.some((sd) => sd.parseError === null && hasTypeAnywhere(sd.parsed, "VideoObject"));
+      if (declared) return [];
+      return [
+        issueFor(meta, config, page, {
+          message: `${embeds.length} video embed(s) with no VideoObject structured data.`,
+          evidence: embeds.map(({ v, i }) => ({ field: `videos[${i}].url`, value: v.url })),
+        }),
+      ];
+    },
+  };
+}
+
 export function structuredDataRules(): PageRule[] {
-  return [parseError(), missingRequiredProperty(), typeMismatch()];
+  return [parseError(), missingRequiredProperty(), typeMismatch(), videoEmbedWithoutSchema()];
 }

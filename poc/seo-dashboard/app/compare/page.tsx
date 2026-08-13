@@ -57,10 +57,10 @@ export default async function ComparePage({ searchParams }: Props) {
     );
   }
 
-  const [diff, { items: basePages }, { items: headPages }] = await Promise.all([
+  const [diff, basePages, headPages] = await Promise.all([
     computeDiff(baseRunId, headRunId),
-    getPages(baseRunId, {}),
-    getPages(headRunId, {}),
+    getPages(baseRunId),
+    getPages(headRunId),
   ]);
 
   const identical = diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0;

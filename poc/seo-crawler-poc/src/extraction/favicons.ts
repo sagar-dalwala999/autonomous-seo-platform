@@ -170,6 +170,54 @@ function decodeJpeg(bytes: Uint8Array): { width: number; height: number } | null
   return null;
 }
 
+/** RIFF/WEBP: three container variants (lossy VP8, lossless VP8L, extended VP8X) each store the
+ * canvas size differently — and VP8L packs 14-bit dimensions across a 32-bit little-endian word. */
+function decodeWebp(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length < 30) return null;
+  const ascii = (i: number, n: number): string =>
+    Array.from(bytes.slice(i, i + n), (b) => String.fromCharCode(b)).join("");
+  if (ascii(0, 4) !== "RIFF" || ascii(8, 4) !== "WEBP") return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const chunk = ascii(12, 4);
+
+  if (chunk === "VP8X") {
+    const w = 1 + (byteAt(bytes, 24) | (byteAt(bytes, 25) << 8) | (byteAt(bytes, 26) << 16));
+    const h = 1 + (byteAt(bytes, 27) | (byteAt(bytes, 28) << 8) | (byteAt(bytes, 29) << 16));
+    return w > 0 && h > 0 ? { width: w, height: h } : null;
+  }
+  if (chunk === "VP8L") {
+    if (bytes.length < 25 || byteAt(bytes, 20) !== 0x2f) return null; // 0x2f = VP8L signature byte
+    const bits = view.getUint32(21, true);
+    const w = (bits & 0x3fff) + 1;
+    const h = ((bits >> 14) & 0x3fff) + 1;
+    return w > 0 && h > 0 ? { width: w, height: h } : null;
+  }
+  if (chunk === "VP8 ") {
+    if (bytes.length < 30) return null;
+    if (byteAt(bytes, 23) !== 0x9d || byteAt(bytes, 24) !== 0x01 || byteAt(bytes, 25) !== 0x2a) return null;
+    const w = view.getUint16(26, true) & 0x3fff;
+    const h = view.getUint16(28, true) & 0x3fff;
+    return w > 0 && h > 0 ? { width: w, height: h } : null;
+  }
+  return null;
+}
+
+/** BMP height is signed — a negative value means a top-down bitmap, not a negative size. */
+function decodeBmp(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length < 26 || byteAt(bytes, 0) !== 0x42 || byteAt(bytes, 1) !== 0x4d) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const headerSize = view.getUint32(14, true);
+  if (headerSize < 40) {
+    if (bytes.length < 22) return null;
+    const w = view.getUint16(18, true);
+    const h = view.getUint16(20, true);
+    return w > 0 && h > 0 ? { width: w, height: h } : null;
+  }
+  const w = view.getInt32(18, true);
+  const h = Math.abs(view.getInt32(22, true));
+  return w > 0 && h > 0 ? { width: w, height: h } : null;
+}
+
 function decodeSvg(bytes: Uint8Array): { width: number; height: number } | null {
   let text: string;
   try {
@@ -198,11 +246,20 @@ function decodeSvg(bytes: Uint8Array): { width: number; height: number } | null 
   return null;
 }
 
-/** Declared `sizes=` frequently lies — this is the valuable signal. Small header parser by
- * design (no image library): PNG/GIF/ICO/JPEG via magic bytes, SVG via viewBox/width/height. */
+/** Declared `sizes=`/`width=` frequently lie — the decoded header is the valuable signal. Small
+ * parser by design (no image library): PNG/GIF/ICO/JPEG/WebP/BMP via magic bytes, SVG via
+ * viewBox/width/height. Also drives content-image sizing, not just favicons. */
 export function decodeImageDimensions(bytes: Uint8Array): { width: number; height: number } | null {
   try {
-    return decodePng(bytes) ?? decodeGif(bytes) ?? decodeIco(bytes) ?? decodeJpeg(bytes) ?? decodeSvg(bytes);
+    return (
+      decodePng(bytes) ??
+      decodeGif(bytes) ??
+      decodeIco(bytes) ??
+      decodeJpeg(bytes) ??
+      decodeWebp(bytes) ??
+      decodeBmp(bytes) ??
+      decodeSvg(bytes)
+    );
   } catch {
     return null;
   }

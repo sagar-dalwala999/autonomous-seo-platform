@@ -5,6 +5,7 @@ import { AlertTriangle, Clock, ExternalLink, FileWarning, RefreshCw } from "luci
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ArtifactStorageNotice } from "@/components/artifacts/artifact-storage-notice";
 import { statusTone } from "@/lib/explorer-shared";
 import { cn } from "@/lib/cn";
 import { isFrameableScheme } from "./frameability";
@@ -22,6 +23,10 @@ export interface PageReplayProps {
   canFrameLive: boolean;
   frameBlockedBy: string | null;
   hasScreenshot: boolean;
+  /** MVP acceptance criterion #11 — undefined while the server-side check hasn't run (never true
+   *  blank-render: the notice only shows once we know for sure it's false). */
+  artifactStorageConfigured?: boolean;
+  artifactStorageReason?: string;
   className?: string;
 }
 
@@ -62,6 +67,8 @@ export function PageReplay({
   canFrameLive,
   frameBlockedBy,
   hasScreenshot,
+  artifactStorageConfigured,
+  artifactStorageReason,
   className,
 }: PageReplayProps) {
   const [variant, setVariant] = useState<ReplayVariant>("rendered");
@@ -122,6 +129,7 @@ export function PageReplay({
 
   return (
     <div className={cn("space-y-3", className)}>
+      {artifactStorageConfigured === false && <ArtifactStorageNotice reason={artifactStorageReason} />}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-border bg-subtle px-4 py-3 text-xs">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Badge tone={statusTone(statusCode)}>{statusCode ?? "—"}</Badge>
@@ -164,7 +172,7 @@ export function PageReplay({
                   ? undefined
                   : key === "live"
                     ? (frameBlockedBy ?? "This site blocks embedding")
-                    : "No screenshot stored for this run — re-crawl with --screenshots"
+                    : 'No screenshot stored for this run — turn on "Capture screenshots" in New crawl and run it again'
               }
               onClick={() => setMode(key)}
               className={cn(
@@ -252,6 +260,8 @@ export function PageReplay({
             <iframe
               src={pageUrl}
               referrerPolicy="no-referrer"
+              // Both tokens are required for a third-party page to render as itself; allow-same-origin
+              // grants the frame ITS OWN origin (never ours), so this is a plain cross-origin embed.
               sandbox="allow-scripts allow-same-origin"
               title={`Live page: ${pageUrl}`}
               className="h-full w-full"

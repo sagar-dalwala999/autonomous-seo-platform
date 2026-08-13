@@ -5,8 +5,13 @@ import {
   sitemap404Rule,
   sitemapNoindexIncludedRule,
   sitemapTooManyUrlsRule,
+  noSitemapFoundRule,
+  sitemapListsBlockedUrlsRule,
+  sitemapPageNoInlinksRule,
+  sitemapUrlNoncanonicalRule,
+  sitemapLastmodSuspectRule,
 } from "../../../../src/analysis/rules/site/sitemap";
-import { makeConfig, makeContext, makeFailure, makePage, makeSitemap } from "./fixtures";
+import { makeConfig, makeContext, makeFailure, makeLink, makePage, makeSitemap } from "./fixtures";
 
 describe("sitemap404Rule", () => {
   it("fires when a sitemap entry matches a recorded http-4xx failure", () => {
@@ -103,5 +108,120 @@ describe("sitemapTooManyUrlsRule", () => {
 
   it("returns null (data unavailable) when no sitemap was fetched, rather than passing", () => {
     expect(sitemapTooManyUrlsRule.evaluate(makeContext({ sitemap: null }), makeConfig())).toBeNull();
+  });
+});
+
+describe("noSitemapFoundRule", () => {
+  it("fires when the sitemap was fetched but resolved to zero entries", () => {
+    const ctx = makeContext({ sitemap: makeSitemap({ entries: [] }) });
+    const issues = noSitemapFoundRule.evaluate(ctx, makeConfig())!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.severity).toBe("warning");
+  });
+
+  it("does not fire when the sitemap has entries", () => {
+    const ctx = makeContext({ sitemap: makeSitemap({ entries: [{ url: "https://x.test/a", sourceSitemap: "s.xml" }] }) });
+    expect(noSitemapFoundRule.evaluate(ctx, makeConfig())!).toHaveLength(0);
+  });
+
+  it("returns null (data unavailable) when sitemaps.json was never written (pre-feature run)", () => {
+    expect(noSitemapFoundRule.evaluate(makeContext({ sitemap: null }), makeConfig())).toBeNull();
+  });
+});
+
+describe("sitemapListsBlockedUrlsRule", () => {
+  it("fires when a sitemap entry is also disallowed by robots.txt", () => {
+    const sitemap = makeSitemap({ entries: [{ url: "https://x.test/private", sourceSitemap: "s.xml" }] });
+    const issues = sitemapListsBlockedUrlsRule.evaluate(makeContext({ sitemap, blocked: ["https://x.test/private"] }), makeConfig())!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.severity).toBe("warning");
+  });
+
+  it("does not fire when nothing in the sitemap is blocked", () => {
+    const sitemap = makeSitemap({ entries: [{ url: "https://x.test/about", sourceSitemap: "s.xml" }] });
+    expect(sitemapListsBlockedUrlsRule.evaluate(makeContext({ sitemap, blocked: [] }), makeConfig())!).toHaveLength(0);
+  });
+
+  it("returns null (data unavailable) when no sitemap was fetched", () => {
+    expect(sitemapListsBlockedUrlsRule.evaluate(makeContext({ sitemap: null }), makeConfig())).toBeNull();
+  });
+});
+
+describe("sitemapPageNoInlinksRule", () => {
+  it("fires when a crawled, non-seed sitemap page has zero internal inlinks", () => {
+    const page = makePage({ url: "https://x.test/deep-page", crawl: { depth: 2, parentUrl: "https://x.test/", discoverySources: ["sitemap"] } });
+    const sitemap = makeSitemap({ entries: [{ url: "https://x.test/deep-page", sourceSitemap: "s.xml" }] });
+    const issues = sitemapPageNoInlinksRule.evaluate(makeContext({ pages: [page], sitemap }), makeConfig())!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.severity).toBe("notice");
+  });
+
+  it("does not fire when another crawled page links to it", () => {
+    const target = makePage({ url: "https://x.test/deep-page", crawl: { depth: 2, parentUrl: null, discoverySources: [] } });
+    const source = makePage({
+      url: "https://x.test/hub",
+      links: [makeLink({ source: "https://x.test/hub", target: "https://x.test/deep-page" })],
+    });
+    const sitemap = makeSitemap({ entries: [{ url: "https://x.test/deep-page", sourceSitemap: "s.xml" }] });
+    const issues = sitemapPageNoInlinksRule.evaluate(makeContext({ pages: [target, source], sitemap }), makeConfig())!;
+    expect(issues).toHaveLength(0);
+  });
+
+  it("returns null (data unavailable) when no sitemap was fetched", () => {
+    expect(sitemapPageNoInlinksRule.evaluate(makeContext({ sitemap: null }), makeConfig())).toBeNull();
+  });
+});
+
+describe("sitemapUrlNoncanonicalRule", () => {
+  it("fires when a sitemap-listed page's canonical points elsewhere", () => {
+    const page = makePage({ url: "https://x.test/a", canonical: "https://x.test/b" });
+    const sitemap = makeSitemap({ entries: [{ url: "https://x.test/a", sourceSitemap: "s.xml" }] });
+    const issues = sitemapUrlNoncanonicalRule.evaluate(makeContext({ pages: [page], sitemap }), makeConfig())!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.severity).toBe("warning");
+  });
+
+  it("does not fire when the canonical is self-referencing", () => {
+    const page = makePage({ url: "https://x.test/a", canonical: "https://x.test/a" });
+    const sitemap = makeSitemap({ entries: [{ url: "https://x.test/a", sourceSitemap: "s.xml" }] });
+    expect(sitemapUrlNoncanonicalRule.evaluate(makeContext({ pages: [page], sitemap }), makeConfig())!).toHaveLength(0);
+  });
+
+  it("returns null (data unavailable) when no sitemap was fetched", () => {
+    expect(sitemapUrlNoncanonicalRule.evaluate(makeContext({ sitemap: null }), makeConfig())).toBeNull();
+  });
+});
+
+describe("sitemapLastmodSuspectRule", () => {
+  const trust = (overrides: Partial<import("../../../../src/models/types").SitemapLastmodTrust>) => ({
+    totalUrls: 10,
+    withLastmod: 10,
+    invalid: 0,
+    distinctValues: 10,
+    future: 0,
+    withinLastHour: 0,
+    allIdentical: false,
+    newest: "2026-08-01T00:00:00Z",
+    oldest: "2026-01-01T00:00:00Z",
+    verdict: "trustworthy" as const,
+    ...overrides,
+  });
+
+  it("fires when the verdict is a suspect- variant", () => {
+    const sitemap = makeSitemap({ lastmodTrust: trust({ verdict: "suspect-future", future: 3 }) });
+    const issues = sitemapLastmodSuspectRule.evaluate(makeContext({ sitemap }), makeConfig())!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.severity).toBe("notice");
+  });
+
+  it("does not fire when the verdict is trustworthy", () => {
+    const sitemap = makeSitemap({ lastmodTrust: trust({ verdict: "trustworthy" }) });
+    expect(sitemapLastmodSuspectRule.evaluate(makeContext({ sitemap }), makeConfig())!).toHaveLength(0);
+  });
+
+  it("returns null (data unavailable) when lastmodTrust was never computed", () => {
+    const sitemap = makeSitemap({});
+    expect(sitemapLastmodSuspectRule.evaluate(makeContext({ sitemap }), makeConfig())).toBeNull();
+    expect(sitemapLastmodSuspectRule.evaluate(makeContext({ sitemap: null }), makeConfig())).toBeNull();
   });
 });

@@ -118,6 +118,76 @@ export const exactDuplicateContentRule: SiteRule = {
   },
 };
 
+/** Kishan's exact normalization: lowercase -> strip /index.html(m) -> strip trailing slash.
+ * Query string is kept (a different query is a legitimately different resource, e.g. pagination). */
+function variantKey(url: string): string | null {
+  try {
+    const u = new URL(url);
+    let path = u.pathname.toLowerCase().replace(/\/index\.html?$/, "/");
+    if (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
+    return `${u.hostname.toLowerCase()}${path || "/"}${u.search}`;
+  } catch {
+    return null;
+  }
+}
+
+const urlVariantMeta: RuleMeta = {
+  id: "url-variant-duplicate",
+  category: "duplicates",
+  defaultSeverity: "warning",
+  description:
+    "The same page is reachable at more than one URL form (case, /index.html, or trailing-slash variants) and serves byte-identical content at each — link equity and crawl budget split across addresses that are really one page. " +
+    "Distinct from exact-duplicate-content: this fires only when the URLs are variants of each other, which points at a redirect/canonical fix rather than a content-authoring one.",
+  howToFix: "Pick one canonical URL form and 301-redirect the others to it (or add a self-referencing canonical tag).",
+  dataRequirements: ["content.contentHash"],
+};
+
+export const urlVariantDuplicateRule: SiteRule = {
+  meta: urlVariantMeta,
+  evaluate(ctx, config) {
+    if (!isRuleEnabled(urlVariantMeta.id, config)) return null;
+    const severity = resolvedSeverity(urlVariantMeta.id, urlVariantMeta.defaultSeverity, config);
+    const live = ctx.pages.filter(
+      (p) => p.statusCode !== null && p.statusCode >= 200 && p.statusCode < 300 && p.content.wordCount > 0,
+    );
+    const byKey = new Map<string, CrawledPage[]>();
+    for (const page of live) {
+      const key = variantKey(primaryUrl(page));
+      if (key === null) continue;
+      const list = byKey.get(key);
+      if (list) list.push(page);
+      else byKey.set(key, [page]);
+    }
+    const issues: Issue[] = [];
+    for (const members of byKey.values()) {
+      // The crawler already dedupes by normalizedUrl, so >=2 members here only happens when
+      // their authored URLs genuinely differ in case/index.html/trailing-slash — guard anyway.
+      const distinctUrls = new Set(members.map((m) => primaryUrl(m)));
+      if (distinctUrls.size < 2) continue;
+      const hashes = new Set(members.map((m) => m.content.contentHash));
+      if (hashes.size !== 1) continue; // not proven byte-identical — don't fabricate a duplicate
+      for (const page of members) {
+        const others = members.filter((m) => m !== page);
+        issues.push({
+          ruleId: urlVariantMeta.id,
+          category: urlVariantMeta.category,
+          severity,
+          scope: "site",
+          url: primaryUrl(page),
+          pageId: pageIdFor(page.normalizedUrl),
+          message: `Same content is reachable at ${members.length} URL variants: ${members.map((m) => primaryUrl(m)).join(", ")}`,
+          howToFix: urlVariantMeta.howToFix,
+          evidence: [
+            { field: "content.contentHash", value: page.content.contentHash },
+            ...others.map((o) => ({ field: "content.contentHash", value: o.content.contentHash, pageId: pageIdFor(o.normalizedUrl) })),
+          ],
+        });
+      }
+    }
+    return issues;
+  },
+};
+
 const nearDuplicateContentMeta: RuleMeta = {
   id: "near-duplicate-content",
   category: "duplicates",

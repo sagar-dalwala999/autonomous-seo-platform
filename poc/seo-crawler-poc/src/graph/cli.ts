@@ -1,8 +1,8 @@
 /** Slice C2 implements: npm run graph -- --run <runId> [--out storage] [--damping N] */
 import { parseArgs } from "node:util";
 import { RunStore } from "../storage/runStore";
-import { computeGraph, DEFAULT_DAMPING } from "./pagerank";
-import { writeGraphReport } from "./writeGraphReport";
+import { DEFAULT_DAMPING } from "./pagerank";
+import { ensureGraphReport } from "./runGraph";
 import type { GraphReport } from "../models/types";
 
 const HELP_TEXT = `
@@ -79,15 +79,14 @@ async function main(): Promise<void> {
   }
 
   const t0 = Date.now();
-  const report = computeGraph(pages, runId, {
+  const report = await ensureGraphReport(outDir, runId, pages, {
     damping: values.damping ? Number(values.damping) : undefined,
     maxIterations: values["max-iterations"] ? Number(values["max-iterations"]) : undefined,
     epsilon: values.epsilon ? Number(values.epsilon) : undefined,
   });
   const elapsedMs = Date.now() - t0;
 
-  const outFile = await writeGraphReport(outDir, runId, report);
-  console.log(`  wrote: ${outFile}`);
+  console.log(`  wrote: ${store.runDir}\\graph.json`);
   console.log(`  computeGraph: ${elapsedMs}ms for ${pages.length} pages`);
   printSummary(report);
   process.exit(0);

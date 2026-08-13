@@ -1,139 +1,93 @@
-/** Slice S7 implements. Dependency-free string/regex heuristics — no cheerio, no DOM parse. */
+/** Slice S7 implements; reworked per the four-crawler escalation-heuristic audit (see WORK_LOG).
+ * The previous 7-signal stack escalated on proxies (missing SEO tags, "tiny body", bundler script
+ * src) that correlate weakly with real JS-dependency: 21 of 24 pages it escalated on the audited
+ * site gained nothing (content.source stayed static-dom). Replaced with exactly two signals, both
+ * direct evidence of an empty/JS-dependent DOM — never a missing-SEO-tag proxy alone. */
 import type { CrawlScope, ExtractionResult } from "../models/types";
 
 /** Numeric knobs, exported so the POC report can cite exactly what fired. */
 export const DETECTION_THRESHOLDS = {
-  /** "tiny-body": meaningful markup (script/style stripped) below this many bytes. */
-  tinyBodyBytes: 1536,
-  /** "empty-app-shell": text left inside a matched mount root, in chars, to count as "empty". */
-  emptyShellMaxInnerTextChars: 40,
-  /** "low-text-ratio": visible-text bytes / total HTML bytes below this fraction. */
-  lowTextRatio: 0.02,
-  /** "low-text-ratio" only applies above this total-HTML-byte size (guards trivial docs). */
-  lowTextRatioMinHtmlBytes: 500,
-  /** "no-links-no-text": wordCount below this, combined with zero internal links. */
-  noLinksNoTextMaxWordCount: 30,
-  /** "spa-bundle-only": wordCount below this, combined with a bundler-pattern script src. */
-  spaBundleMaxWordCount: 50,
-  /** "script-dominant": script bytes / total bytes at or above this fraction. */
-  scriptDominantMinFraction: 0.7,
-  /** "script-dominant" also requires wordCount below this. */
-  scriptDominantMaxWordCount: 30,
+  /** [A] "empty framework root": total static visible-text chars under this, when a known SPA
+   * mount marker (#root/#__next/#app, data-reactroot, ng-version/ng-app) is present anywhere. */
+  emptyFrameworkRootMaxChars: 200,
+  /** [B] "sparse js-heavy dom": visible-text-bytes / total-html-bytes below this fraction. */
+  sparseTextRatio: 0.05,
+  /** [B] script bytes must exceed text bytes by more than this multiple. */
+  sparseScriptToTextMultiple: 3,
+  /** [B] static internal link count strictly below this. */
+  sparseMaxInternalLinks: 3,
 } as const;
 
-const NOSCRIPT_RE = /<noscript\b[^>]*>([\s\S]*?)<\/noscript>/gi;
-const NOSCRIPT_WARNING_RE = /enable\s+javascript|javascript\s+is\s+required/i;
-
-// Bundler-pattern script src: Next static chunks, Vite/webpack hashed assets, generic "chunk-*.js".
-const BUNDLE_SCRIPT_RE =
-  /<script[^>]+src=["'][^"']*(?:\/_next\/static\/|\/assets\/[^"']*\.[0-9a-f]{6,}\.js|webpack|chunk-[\w.]+\.js|vite|\bbundle(?:\.[\w]+)?\.js|main\.[0-9a-f]{6,}\.js)[^"']*["']/i;
-
-// Div-based mount roots: matched by id, then scanned for near-empty inner content.
-const DIV_MOUNT_ID_RE = /<div\b[^>]*\bid=["'](root|__next|app)["'][^>]*>/gi;
-// Attribute-based framework markers that aren't bound to one element we can scan the inside of.
+const DIV_MOUNT_ID_RE = /<div\b[^>]*\bid=["'](root|__next|app)["'][^>]*>/i;
 const ATTR_MOUNT_MARKERS_RE = /data-reactroot|ng-version\s*=|\bng-app\b/i;
-
-function stripScriptStyle(html: string): string {
-  return html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
-}
+const SCRIPT_BLOCK_RE = /<script[\s\S]*?<\/script>/gi;
+const STYLE_BLOCK_RE = /<style[\s\S]*?<\/style>/gi;
 
 function stripTags(html: string): string {
   return html.replace(/<[^>]+>/g, " ");
 }
 
+/** Script/style stripped, tags stripped, whitespace collapsed — the same shape as the extraction
+ * pipeline's own visible-text notion, kept local so this module stays dependency-free. */
 function visibleText(html: string): string {
-  return stripTags(stripScriptStyle(html)).replace(/\s+/g, " ").trim();
+  const stripped = html.replace(SCRIPT_BLOCK_RE, "").replace(STYLE_BLOCK_RE, "");
+  return stripTags(stripped).replace(/\s+/g, " ").trim();
+}
+
+/** Sum of every `<script>...</script>` block's own byte length (tags included) — the wire cost
+ * of script markup, independent of style bytes so it isn't diluted by an unrelated CSS block. */
+function scriptBytesOf(html: string): number {
+  let bytes = 0;
+  for (const m of html.matchAll(SCRIPT_BLOCK_RE)) bytes += Buffer.byteLength(m[0], "utf8");
+  return bytes;
+}
+
+function hasFrameworkMountMarker(html: string): boolean {
+  return DIV_MOUNT_ID_RE.test(html) || ATTR_MOUNT_MARKERS_RE.test(html);
 }
 
 /**
- * Text inside the first div matching `openRe`, found by depth-counting `<div>`/`</div>` tokens
- * from the match — a full parser is overkill for a heuristic and this repo stays dependency-free.
- */
-function firstMountRootInnerText(html: string, openRe: RegExp): string | null {
-  openRe.lastIndex = 0;
-  const open = openRe.exec(html);
-  if (!open) return null;
-
-  const start = open.index + open[0].length;
-  const tagRe = /<\/?div\b[^>]*>/gi;
-  tagRe.lastIndex = start;
-  let depth = 1;
-  let m: RegExpExecArray | null;
-  while ((m = tagRe.exec(html))) {
-    if (m[0].startsWith("</")) {
-      depth--;
-      if (depth === 0) return visibleText(html.slice(start, m.index));
-    } else if (!/\/>\s*$/.test(m[0])) {
-      depth++;
-    }
-  }
-  return visibleText(html.slice(start));
-}
-
-/**
- * Decide whether static HTML is insufficient and the page needs Playwright rendering (plan §18).
- * `scope` is unused here — internal/external is already resolved into `extraction.links[].type`.
+ * Decide whether static HTML is insufficient and the page needs Playwright rendering.
+ *
+ * Deliberately narrow: escalates only on direct evidence the DOM itself is empty/JS-dependent.
+ * A page missing canonical/title/h1 never escalates on that alone — those are common on genuinely
+ * static pages too and produced most of the over-escalation the prior heuristic suffered from.
+ * `scope` is unused (kept for call-site stability — internal/external is already resolved into
+ * `extraction.links[].type`).
  */
 export function needsJsRendering(
   html: string,
   extraction: ExtractionResult,
-  scope: CrawlScope,
+  _scope: CrawlScope,
 ): { needed: boolean; signals: string[] } {
   const T = DETECTION_THRESHOLDS;
   const signals: string[] = [];
-  const strong = new Set(["empty-app-shell", "noscript-warning"]);
 
   const totalBytes = Buffer.byteLength(html, "utf8");
-  const meaningfulBytes = Buffer.byteLength(stripScriptStyle(html), "utf8");
+  const text = visibleText(html);
+  const textBytes = Buffer.byteLength(text, "utf8");
 
-  if (meaningfulBytes < T.tinyBodyBytes) signals.push("tiny-body");
+  // [A] A known SPA mount marker is present, but the ENTIRE static body carries almost no visible
+  // text anywhere — not just inside the mount root — so the page is a shell waiting on JS.
+  if (hasFrameworkMountMarker(html) && text.length < T.emptyFrameworkRootMaxChars) {
+    signals.push("empty-framework-root");
+  }
 
-  let emptyShell = false;
-  for (const m of html.matchAll(DIV_MOUNT_ID_RE)) {
-    const idRe = new RegExp(m[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-    const inner = firstMountRootInnerText(html, idRe);
-    if (inner !== null && inner.length < T.emptyShellMaxInnerTextChars) {
-      emptyShell = true;
-      break;
+  // [B] Thin text ratio + script bytes dwarfing text bytes + too few internal links to already be
+  // a real crawlable page as shipped. All three must hold — any one alone is too common on static
+  // pages (a script-heavy analytics page, a thin-but-real landing page, a nav-light single-pager).
+  if (totalBytes > 0) {
+    const textRatio = textBytes / totalBytes;
+    const scriptBytes = scriptBytesOf(html);
+    const internalLinks = extraction.links.filter((l) => l.type === "internal").length;
+    if (
+      textRatio < T.sparseTextRatio &&
+      scriptBytes > textBytes * T.sparseScriptToTextMultiple &&
+      internalLinks < T.sparseMaxInternalLinks
+    ) {
+      signals.push("sparse-js-heavy-dom");
     }
   }
-  if (!emptyShell && ATTR_MOUNT_MARKERS_RE.test(html)) {
-    emptyShell = visibleText(html).length < T.emptyShellMaxInnerTextChars;
-  }
-  if (emptyShell) signals.push("empty-app-shell");
 
-  if (totalBytes >= T.lowTextRatioMinHtmlBytes) {
-    const textBytes = Buffer.byteLength(visibleText(html), "utf8");
-    if (textBytes / totalBytes < T.lowTextRatio) signals.push("low-text-ratio");
-  }
-
-  const hasInternalLink = extraction.links.some((l) => l.type === "internal");
-  if (!hasInternalLink && extraction.content.wordCount < T.noLinksNoTextMaxWordCount) {
-    signals.push("no-links-no-text");
-  }
-
-  const noscriptMatches = [...html.matchAll(NOSCRIPT_RE)].map((m) => m[1] ?? "");
-  if (noscriptMatches.some((body) => NOSCRIPT_WARNING_RE.test(body))) {
-    signals.push("noscript-warning");
-  }
-
-  if (BUNDLE_SCRIPT_RE.test(html) && extraction.content.wordCount < T.spaBundleMaxWordCount) {
-    signals.push("spa-bundle-only");
-  }
-
-  // Inline-data CSR shells (quotes.toscrape.com/js shape) can ride the low-text-ratio threshold
-  // edge across server variants — script dominance is the stable version of the same evidence.
-  if (
-    totalBytes > 0 &&
-    (totalBytes - meaningfulBytes) / totalBytes >= T.scriptDominantMinFraction &&
-    extraction.content.wordCount < T.scriptDominantMaxWordCount
-  ) {
-    signals.push("script-dominant");
-  }
-
-  const hasStrong = signals.some((s) => strong.has(s));
-  const weakCount = signals.filter((s) => !strong.has(s)).length;
-  const needed = hasStrong || weakCount >= 2;
-
-  return { needed, signals };
+  return { needed: signals.length > 0, signals };
 }

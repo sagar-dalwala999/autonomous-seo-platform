@@ -1,0 +1,7 @@
+User-agent: *
+Crawl-delay: 5
+Disallow: /private/
+
+User-agent: seo-crawler-poc-test
+Crawl-delay: 2
+Disallow: /private/

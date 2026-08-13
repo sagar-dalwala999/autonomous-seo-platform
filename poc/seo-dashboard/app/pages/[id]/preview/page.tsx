@@ -3,6 +3,7 @@ import path from "node:path";
 import Link from "next/link";
 import { ArrowLeft, FileSearch } from "lucide-react";
 import { resolveRunId, getPage, runsDir } from "@/lib/data";
+import { getArtifactStorageStatus } from "@/lib/artifact-status";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageReplay } from "@/components/preview/page-replay";
@@ -42,6 +43,7 @@ export default async function PagePreviewPage({ params, searchParams }: Props) {
     .catch(() => false);
 
   const frame = frameability(page.headers, page.url);
+  const artifactStorage = getArtifactStorageStatus();
 
   return (
     <div className="space-y-4 pb-8">
@@ -70,6 +72,8 @@ export default async function PagePreviewPage({ params, searchParams }: Props) {
         canFrameLive={frame.canFrameLive}
         frameBlockedBy={frame.frameBlockedBy}
         hasScreenshot={Boolean(page.screenshot?.full)}
+        artifactStorageConfigured={artifactStorage.configured}
+        artifactStorageReason={artifactStorage.reason}
       />
     </div>
   );

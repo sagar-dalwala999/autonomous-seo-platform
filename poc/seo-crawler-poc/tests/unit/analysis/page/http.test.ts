@@ -40,4 +40,44 @@ describe("slow-page", () => {
     expect(rule("slow-page").evaluate(makePage({ performance: { responseTimeMs: 300 } }), config)).toEqual([]);
     expect(rule("slow-page").evaluate(makePage({ performance: { responseTimeMs: null } }), config)).toEqual([]);
   });
+
+  it("skips playwright-rendered pages — their timing is nav-to-post-settle wall clock, not a response time", () => {
+    // 76.6% of rendered pages in storage/runs clear 2000ms (vs 0.9% of http-fetched ones),
+    // including localhost pages at 3.9s — the settle loop, not the server.
+    expect(
+      rule("slow-page").evaluate(makePage({ renderedWith: "playwright", performance: { responseTimeMs: 3933 } }), config),
+    ).toBeNull();
+  });
+});
+
+describe("no-compression", () => {
+  it("fires when contentEncoding is absent and the page is over the byte floor", () => {
+    const issues = rule("no-compression").evaluate(
+      makePage({ pageStats: { htmlBytes: 50_000, textRatio: 0.2, domNodes: 100, contentEncoding: null, httpVersion: "1.1" } }),
+      config,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues![0]!.severity).toBe("notice");
+  });
+
+  it("does not fire when contentEncoding is present", () => {
+    const issues = rule("no-compression").evaluate(
+      makePage({ pageStats: { htmlBytes: 50_000, textRatio: 0.2, domNodes: 100, contentEncoding: "gzip", httpVersion: "1.1" } }),
+      config,
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it("does not fire under the byte floor even when uncompressed", () => {
+    const issues = rule("no-compression").evaluate(
+      makePage({ pageStats: { htmlBytes: 500, textRatio: 0.2, domNodes: 100, contentEncoding: null, httpVersion: "1.1" } }),
+      config,
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it("skips (returns null) when pageStats was never captured (pre-v2 run)", () => {
+    const { pageStats, ...rest } = makePage();
+    expect(rule("no-compression").evaluate(rest, config)).toBeNull();
+  });
 });

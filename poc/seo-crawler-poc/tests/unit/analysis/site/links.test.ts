@@ -4,6 +4,11 @@ import {
   brokenInternalLinkRule,
   canonicalTargetValidityRule,
   weaklyLinkedRule,
+  canonicalChainRule,
+  excessiveLinksRule,
+  vagueAnchorTextRule,
+  highEmptyAnchorRatioRule,
+  pageNoInternalLinksRule,
 } from "../../../../src/analysis/rules/site/links";
 import { makeConfig, makeContext, makeFailure, makeLink, makePage } from "./fixtures";
 
@@ -35,6 +40,37 @@ describe("weaklyLinkedRule", () => {
     const b = makePage({ url: "https://x.test/b", links: [makeLink({ source: "https://x.test/b", target: target.url })] });
     const issues = weaklyLinkedRule.evaluate(makeContext({ pages: [a, b, target] }), makeConfig())!;
     expect(issues).toHaveLength(0);
+  });
+
+  it("treats weakInlinkCount as a ceiling, not an exact match — 2 inlinks fire when the threshold is 3", () => {
+    const target = makePage({ url: "https://x.test/target", crawl: { depth: 1, parentUrl: null, discoverySources: [] } });
+    const a = makePage({ url: "https://x.test/a", links: [makeLink({ source: "https://x.test/a", target: target.url })] });
+    const b = makePage({ url: "https://x.test/b", links: [makeLink({ source: "https://x.test/b", target: target.url })] });
+    const config = makeConfig({ thresholds: { ...makeConfig().thresholds, weakInlinkCount: 3 } });
+    const issues = weaklyLinkedRule.evaluate(makeContext({ pages: [a, b, target] }), config)!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.threshold).toBe("inlink count <= 3 (was 2)");
+  });
+
+  it("leaves a zero-inlink page to orphan-page even when the threshold would cover it", () => {
+    const target = makePage({ url: "https://x.test/target", crawl: { depth: 1, parentUrl: null, discoverySources: [] } });
+    const config = makeConfig({ thresholds: { ...makeConfig().thresholds, weakInlinkCount: 3 } });
+    expect(weaklyLinkedRule.evaluate(makeContext({ pages: [target] }), config)!).toHaveLength(0);
+  });
+
+  it("does not count a page's self-links as inbound links", () => {
+    const target = makePage({
+      url: "https://x.test/target",
+      crawl: { depth: 1, parentUrl: null, discoverySources: [] },
+      links: [
+        makeLink({ source: "https://x.test/target", target: "https://x.test/target" }),
+        makeLink({ source: "https://x.test/target", target: "https://x.test/target#section" }),
+      ],
+    });
+    const a = makePage({ url: "https://x.test/a", links: [makeLink({ source: "https://x.test/a", target: target.url })] });
+    const issues = weaklyLinkedRule.evaluate(makeContext({ pages: [a, target] }), makeConfig())!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.message).toContain("1 internal inlink(s)");
   });
 });
 
@@ -151,5 +187,136 @@ describe("auth-required vs broken links", () => {
     const ctx = makeContext({ pages: [linkingTo("https://x.test/ok"), target] });
     expect(brokenInternalLinkRule.evaluate(ctx, makeConfig())!).toHaveLength(0);
     expect(authRequiredLinkRule.evaluate(ctx, makeConfig())!).toHaveLength(0);
+  });
+});
+
+describe("canonicalChainRule", () => {
+  it("fires when the canonical target itself canonicalises onward (not to itself)", () => {
+    const a = makePage({ url: "https://x.test/a", canonical: "https://x.test/b" });
+    const b = makePage({ url: "https://x.test/b", canonical: "https://x.test/c" });
+    const issues = canonicalChainRule.evaluate(makeContext({ pages: [a, b] }), makeConfig())!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.severity).toBe("warning");
+    expect(issues[0]!.message).toContain("https://x.test/a");
+  });
+
+  it("does not fire when the target self-canonicalises (chain ends there)", () => {
+    const a = makePage({ url: "https://x.test/a", canonical: "https://x.test/b" });
+    const b = makePage({ url: "https://x.test/b", canonical: "https://x.test/b" });
+    expect(canonicalChainRule.evaluate(makeContext({ pages: [a, b] }), makeConfig())!).toHaveLength(0);
+  });
+
+  it("does not fire when the page has no canonical", () => {
+    const a = makePage({ url: "https://x.test/a", canonical: null });
+    expect(canonicalChainRule.evaluate(makeContext({ pages: [a] }), makeConfig())!).toHaveLength(0);
+  });
+
+  it("does not fire when a page redirects straight to its own canonical target (found real false positive on arena.ai/cookie-policy)", () => {
+    // pageByPath matches on finalUrl too, so a page whose OWN finalUrl equals the pathname of
+    // its OWN canonical resolves "middle" back to itself — that's a correct self-referencing
+    // canonical across a redirect, not a second canonical hop.
+    const page = makePage({
+      url: "https://x.test/cookie-policy",
+      finalUrl: "https://help.x.test/articles/cookie-policy",
+      canonical: "https://help.x.test/articles/cookie-policy",
+    });
+    expect(canonicalChainRule.evaluate(makeContext({ pages: [page] }), makeConfig())!).toHaveLength(0);
+  });
+
+  it("does not fire when a DIFFERENT alias also redirects+self-canonicalises to the same undercrawled destination (found real false positive on shop.nousresearch.com)", () => {
+    // No page was ever independently crawled AT /collections/products itself — only aliases
+    // that redirect there. pageByPath resolves "middle" to one of those aliases, whose own
+    // canonical simply agrees with where IT lands, not a distinct second hop.
+    const source = makePage({ url: "https://x.test/?country=IN", finalUrl: "https://x.test/collections/products", canonical: "https://x.test/collections/products" });
+    const alias = makePage({ url: "https://x.test/", finalUrl: "https://x.test/collections/products", canonical: "https://x.test/collections/products" });
+    expect(canonicalChainRule.evaluate(makeContext({ pages: [source, alias] }), makeConfig())!).toHaveLength(0);
+  });
+});
+
+describe("excessiveLinksRule", () => {
+  it("fires when a page's link count exceeds the configured max", () => {
+    const links = Array.from({ length: 5 }, (_, i) => makeLink({ source: "https://x.test/", target: `https://x.test/p${i}` }));
+    const page = makePage({ url: "https://x.test/", links });
+    const config = makeConfig({ thresholds: { ...makeConfig().thresholds, excessiveLinksCount: 3 } });
+    const issues = excessiveLinksRule.evaluate(makeContext({ pages: [page] }), config)!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.threshold).toContain("max 3");
+  });
+
+  it("does not fire under the max", () => {
+    const page = makePage({ url: "https://x.test/", links: [makeLink({ source: "https://x.test/", target: "https://x.test/p" })] });
+    expect(excessiveLinksRule.evaluate(makeContext({ pages: [page] }), makeConfig())!).toHaveLength(0);
+  });
+});
+
+describe("vagueAnchorTextRule", () => {
+  it("fires on 'click here' style anchor text", () => {
+    const page = makePage({
+      url: "https://x.test/",
+      links: [makeLink({ source: "https://x.test/", target: "https://x.test/guide", anchor: "click here" })],
+    });
+    const issues = vagueAnchorTextRule.evaluate(makeContext({ pages: [page] }), makeConfig())!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.severity).toBe("notice");
+  });
+
+  it("does not fire on descriptive anchor text", () => {
+    const page = makePage({
+      url: "https://x.test/",
+      links: [makeLink({ source: "https://x.test/", target: "https://x.test/guide", anchor: "read the pricing guide" })],
+    });
+    expect(vagueAnchorTextRule.evaluate(makeContext({ pages: [page] }), makeConfig())!).toHaveLength(0);
+  });
+});
+
+describe("highEmptyAnchorRatioRule", () => {
+  it("fires when over the configured share of internal links have blank anchor text", () => {
+    const links = [
+      makeLink({ source: "https://x.test/", target: "https://x.test/a", anchor: "" }),
+      makeLink({ source: "https://x.test/", target: "https://x.test/b", anchor: "" }),
+      makeLink({ source: "https://x.test/", target: "https://x.test/c", anchor: "real text" }),
+    ];
+    const page = makePage({ url: "https://x.test/", links });
+    const issues = highEmptyAnchorRatioRule.evaluate(makeContext({ pages: [page] }), makeConfig())!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.message).toContain("2 of 3");
+  });
+
+  it("does not fire when under the ratio", () => {
+    const links = [
+      makeLink({ source: "https://x.test/", target: "https://x.test/a", anchor: "one" }),
+      makeLink({ source: "https://x.test/", target: "https://x.test/b", anchor: "two" }),
+      makeLink({ source: "https://x.test/", target: "https://x.test/c", anchor: "three" }),
+      makeLink({ source: "https://x.test/", target: "https://x.test/d", anchor: "" }),
+    ];
+    const page = makePage({ url: "https://x.test/", links }); // 1/4 = 0.25, under the 0.3 default
+    expect(highEmptyAnchorRatioRule.evaluate(makeContext({ pages: [page] }), makeConfig())!).toHaveLength(0);
+  });
+});
+
+describe("pageNoInternalLinksRule", () => {
+  it("fires when a successfully loaded page links to nothing internal", () => {
+    const page = makePage({
+      url: "https://x.test/",
+      statusCode: 200,
+      links: [makeLink({ source: "https://x.test/", target: "https://elsewhere.test/", type: "external" })],
+    });
+    const issues = pageNoInternalLinksRule.evaluate(makeContext({ pages: [page] }), makeConfig())!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.severity).toBe("warning");
+  });
+
+  it("does not fire when the page has at least one internal link", () => {
+    const page = makePage({
+      url: "https://x.test/",
+      statusCode: 200,
+      links: [makeLink({ source: "https://x.test/", target: "https://x.test/about" })],
+    });
+    expect(pageNoInternalLinksRule.evaluate(makeContext({ pages: [page] }), makeConfig())!).toHaveLength(0);
+  });
+
+  it("does not fire on a page that failed to load", () => {
+    const page = makePage({ url: "https://x.test/broken", statusCode: 404, links: [] });
+    expect(pageNoInternalLinksRule.evaluate(makeContext({ pages: [page] }), makeConfig())!).toHaveLength(0);
   });
 });

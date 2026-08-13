@@ -1,9 +1,15 @@
 /** Slice S4 implements the real arg parsing + wiring. */
 import { parseArgs } from "node:util";
-import { runCrawl } from "./crawler/crawl";
+import { applyCrawlDelay, fetchRobots } from "./discovery/robots";
+import { DEFAULT_USER_AGENT } from "./discovery/http";
+import { runCrawl, CrawlCancelledError } from "./crawler/crawl";
 import { defaultSafety } from "./crawler/safety";
 import { printSummary } from "./report/summary";
-import type { CrawlAuth, CrawlOptions, CrawlSafety, FormLoginConfig } from "./models/types";
+import { EventLog } from "./events/eventLog";
+import { MIN_CONCURRENCY, MAX_CONCURRENCY } from "./queue/runner";
+import type { CrawlAuth, CrawlOptions, CrawlSafety, FormLoginConfig, RobotsInfo } from "./models/types";
+import { DEFAULT_SCREENSHOT_BUDGET } from "./artifacts/screenshotPolicy";
+import { maybeSyncRunToPostgres } from "./storage/supabaseSync.js";
 
 const HELP_TEXT = `
 seo-crawler-poc — POC-1 CLI crawler for the Autonomous SEO Platform
@@ -20,12 +26,33 @@ Options:
   --screenshots         Capture a thumb + full-page WebP screenshot per page (default: off).
                          Forces browser rendering for pages that would otherwise stay static —
                          a screenshot needs a browser. Never fails the crawl on capture errors.
+                         BOUNDED by default: top-N pages by importance + every page with an
+                         error, not literally every page (owner-approved: 27.5GB vs 0.6GB per
+                         100k pages, 45x). Screenshots also try a best-effort upload to Supabase
+                         Storage when SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY are configured;
+                         local files are always written regardless.
+  --screenshot-budget N Max non-error pages captured by importance rank when --screenshots is
+                         on (default: 50). Error pages are never bounded by this.
   --out DIR            Output directory for run evidence (default: storage)
   --alias host[,host]  Extra hostnames treated as this site (e.g. staging-domain crawls)
   --rps N               Requests/sec cap (default: 10 for localhost/127.*, 2 otherwise)
+  --user-agent UA       User-Agent sent on every request — pages, robots.txt, sitemaps, feeds and
+                         asset probes alike (default: seo-crawler-poc/0.1 (+poc; respectful)).
+                         Overriding it is your call; the crawler never rotates or spoofs one,
+                         so a robots.txt rule naming us always matches every request we make.
+  --ignore-crawl-delay  Ignore robots.txt Crawl-delay. Honoured by default: it caps --rps at
+                         1/delay requests per second and can only ever slow the crawl down.
   --run-id ID           Run identifier (default: <hostname>-<yyyymmdd-hhmmss>)
   --check-external      HEAD-check up to 50 unique external link targets after the crawl
                          (rps <= 2, 10s timeout) -> external-links.json. Off by default.
+  --no-image-sizes      Skip the post-crawl image sizing pass. On by default: one ranged GET per
+                         unique image URL yields both the byte size and the real header
+                         dimensions, rate-limited to --rps against the host just crawled.
+  --image-size-cap N    Max unique image URLs to size (default: 100). Images past the cap record
+                         the reason they have no size — a size is never guessed.
+  --no-favicon-probe    Skip favicon probing. On by default and cached per icon URL (a handful of
+                         requests per crawl); without it favicons.effective can only ever be null,
+                         since last-declared-wins with 404 fall-through needs real HTTP statuses.
   --basic-auth user:pass  HTTP Basic auth credentials for protected routes
   --cookie "<header>"     Raw Cookie header value (e.g. "session=abc; csrf=xyz")
   --header "Name: Value"  Extra request header, repeatable (API tokens, WAF bypass tokens)
@@ -81,11 +108,17 @@ async function main(): Promise<void> {
       "no-robots": { type: "boolean" },
       render: { type: "string" },
       screenshots: { type: "boolean" },
+      "screenshot-budget": { type: "string" },
       out: { type: "string" },
       alias: { type: "string" },
       rps: { type: "string" },
+      "user-agent": { type: "string" },
+      "ignore-crawl-delay": { type: "boolean" },
       "run-id": { type: "string" },
       "check-external": { type: "boolean" },
+      "no-image-sizes": { type: "boolean" },
+      "image-size-cap": { type: "string" },
+      "no-favicon-probe": { type: "boolean" },
       "basic-auth": { type: "string" },
       cookie: { type: "string" },
       header: { type: "string", multiple: true },
@@ -131,16 +164,23 @@ async function main(): Promise<void> {
   const render = renderRaw as "auto" | "never" | "always";
 
   const maxPagesRaw = Number(values["max-pages"] ?? "200");
-  const concurrency = Number(values.concurrency ?? "5");
+  const concurrencyRaw = Number(values.concurrency ?? "5");
   if (!Number.isFinite(maxPagesRaw) || maxPagesRaw < 0) {
     console.error(`Error: --max-pages must be 0 (no limit) or a positive number (got "${values["max-pages"]}")`);
     process.exit(1);
   }
   // 0 = crawl-all sentinel; internally a huge number so every budget comparison stays plain math.
   const maxPages = maxPagesRaw === 0 ? Number.MAX_SAFE_INTEGER : maxPagesRaw;
-  if (!Number.isFinite(concurrency) || concurrency <= 0) {
+  if (!Number.isFinite(concurrencyRaw) || concurrencyRaw <= 0) {
     console.error(`Error: --concurrency must be a positive number (got "${values.concurrency}")`);
     process.exit(1);
+  }
+  // Same 1-8 ceiling the job queue enforces (queue/runner.ts) — a runaway value here can never
+  // outrun what the queue path allows either. Politeness (Crawl-delay, below) is a separate,
+  // independent cap that always wins regardless of this one.
+  const concurrency = Math.max(MIN_CONCURRENCY, Math.min(MAX_CONCURRENCY, Math.round(concurrencyRaw)));
+  if (concurrency !== concurrencyRaw) {
+    console.log(`--concurrency clamped ${concurrencyRaw} -> ${concurrency} (range is ${MIN_CONCURRENCY}-${MAX_CONCURRENCY})`);
   }
 
   let maxDepth: number | null = null;
@@ -153,9 +193,54 @@ async function main(): Promise<void> {
   }
 
   const isLocalSeed = parsedStart.hostname === "localhost" || /^127\./.test(parsedStart.hostname);
-  const rps = Number(values.rps ?? (isLocalSeed ? "10" : "2"));
+  let rps = Number(values.rps ?? (isLocalSeed ? "10" : "2"));
   if (!Number.isFinite(rps) || rps <= 0) {
     console.error(`Error: --rps must be a positive number (got "${values.rps}")`);
+    process.exit(1);
+  }
+
+  const userAgent = (values["user-agent"] ?? DEFAULT_USER_AGENT).trim();
+  if (userAgent.length === 0) {
+    console.error("Error: --user-agent must not be empty.");
+    process.exit(1);
+  }
+  if (userAgent !== DEFAULT_USER_AGENT) {
+    console.warn(`NOTE: sending a custom User-Agent on every request: ${userAgent}`);
+  }
+
+  const respectRobots = !values["no-robots"];
+  // Pre-fetch robots.txt purely to read Crawl-delay: the rps cap has to be decided before the
+  // crawl starts. Kept and handed to runCrawl (via CrawlRuntime.preFetchedRobots) below so the
+  // crawl's own robots fetch can reuse it instead of fetching robots.txt a second time per crawl —
+  // that double-fetch was a real, verified defect (the same class of bug this crawler flags other
+  // tools for in the audit). Left null when we didn't pre-fetch (--no-robots / --ignore-crawl-delay)
+  // so runCrawl falls back to its own fetch exactly as before in those cases.
+  let preFetchedRobots: RobotsInfo | null = null;
+  if (respectRobots && values["ignore-crawl-delay"] !== true) {
+    const probe = await fetchRobots(parsedStart.origin, userAgent);
+    preFetchedRobots = probe;
+    const limited = applyCrawlDelay(rps, probe.crawlDelay);
+    if (limited < rps) {
+      console.log(`robots.txt Crawl-delay: ${probe.crawlDelay}s -> rps capped ${rps} -> ${limited.toFixed(4)}`);
+      if ((probe.crawlDelay ?? 0) > 10) {
+        console.warn(
+          `WARNING: a ${probe.crawlDelay}s Crawl-delay makes this crawl very slow. ` +
+            "Use --ignore-crawl-delay to override (your call, and it is a rule the site published).",
+        );
+      }
+      rps = limited;
+    }
+  }
+
+  const imageProbeCap = Number(values["image-size-cap"] ?? "100");
+  if (!Number.isInteger(imageProbeCap) || imageProbeCap < 0) {
+    console.error(`Error: --image-size-cap must be a non-negative integer (got "${values["image-size-cap"]}")`);
+    process.exit(1);
+  }
+
+  const screenshotBudget = Number(values["screenshot-budget"] ?? DEFAULT_SCREENSHOT_BUDGET);
+  if (!Number.isInteger(screenshotBudget) || screenshotBudget < 0) {
+    console.error(`Error: --screenshot-budget must be a non-negative integer (got "${values["screenshot-budget"]}")`);
     process.exit(1);
   }
 
@@ -230,17 +315,20 @@ async function main(): Promise<void> {
     startUrl: parsedStart.toString(),
     maxPages,
     concurrency,
-    respectRobots: !values["no-robots"],
+    respectRobots,
     render,
     screenshots: values.screenshots === true,
     outDir: values.out ?? "storage",
     runId,
-    userAgent: "seo-crawler-poc/0.1 (+poc; respectful)",
+    userAgent,
     maxRequestsPerSecond: rps,
     hostAliases,
     maxDepth,
     auth,
     safety,
+    imageSizes: values["no-image-sizes"] !== true,
+    imageProbeCap,
+    faviconProbe: values["no-favicon-probe"] !== true,
   };
 
   const checkExternal = values["check-external"] === true;
@@ -258,13 +346,42 @@ async function main(): Promise<void> {
             : "none";
 
   console.log(`Crawl started: ${options.startUrl}`);
-  console.log(`  run-id: ${options.runId} | render: ${options.render} | screenshots: ${options.screenshots === true} | robots: ${options.respectRobots} | max-pages: ${options.maxPages === Number.MAX_SAFE_INTEGER ? "all" : options.maxPages} | max-depth: ${options.maxDepth ?? "unlimited"} | check-external: ${checkExternal} | auth: ${authLabel}`);
+  console.log(`  run-id: ${options.runId} | render: ${options.render} | screenshots: ${options.screenshots === true} | robots: ${options.respectRobots} | max-pages: ${options.maxPages === Number.MAX_SAFE_INTEGER ? "all" : options.maxPages} | max-depth: ${options.maxDepth ?? "unlimited"} | check-external: ${checkExternal} | image-sizes: ${options.imageSizes === true ? `on (cap ${imageProbeCap})` : "off"} | favicon-probe: ${options.faviconProbe === true} | auth: ${authLabel} | concurrency: ${options.concurrency}`);
+
+  // Real cancellation, not a UI-only stop: Ctrl+C reaches Crawlee, the asset probes, and the
+  // external-link pool via the same AbortSignal the job queue uses (see queue/queue.ts). The
+  // event log is created here too so a CLI-driven run is replayable afterwards, same as a
+  // queue-driven one — see events/eventLog.ts.
+  const controller = new AbortController();
+  process.once("SIGINT", () => {
+    console.log("\nReceived SIGINT — cancelling the crawl (in-flight requests may finish; no new ones will start)...");
+    controller.abort();
+  });
+  const eventLog = new EventLog(options.outDir, options.runId);
+  await eventLog.init();
 
   try {
-    const summary = await runCrawl(options, checkExternal);
+    const summary = await runCrawl(options, checkExternal, {
+      signal: controller.signal,
+      eventLog,
+      preFetchedRobots: preFetchedRobots ?? undefined,
+      screenshotBudget,
+    });
     printSummary(summary);
+
+    // Additive dual-write, off by default. runStore has already flushed every page/report file
+    // by this point (runCrawl awaits store.saveReport before returning) — flat JSON is untouched
+    // either way, see supabaseSync.ts's own try/catch.
+    if (process.env.POSTGRES_SYNC_ENABLED === "true") {
+      await maybeSyncRunToPostgres(options.outDir, options.runId);
+    }
+
     process.exit(summary.failed > 0 ? 2 : 0);
   } catch (err) {
+    if (err instanceof CrawlCancelledError) {
+      console.log(`Crawl cancelled: ${err.message}`);
+      process.exit(130); // conventional exit code for SIGINT-terminated work
+    }
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);
   }

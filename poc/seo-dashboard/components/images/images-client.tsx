@@ -1,0 +1,178 @@
+"use client";
+
+import { useMemo, useRef, useState } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { Search, ImageOff } from "lucide-react";
+import { Chip } from "@/components/ui/chip";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { TableContainer, TableHead, Th, Tr, Td } from "@/components/ui/table";
+import type { ImageRow, AltState } from "@/lib/data-images";
+
+const PAGE_SIZE = 100;
+type SortKey = "usage" | "url";
+const ALT_STATES: AltState[] = ["missing", "empty", "described"];
+const ALT_LABEL: Record<AltState, string> = { missing: "Missing alt", empty: "Empty alt", described: "Described" };
+const ALT_TONE: Record<AltState, "danger" | "warn" | "ok"> = { missing: "danger", empty: "warn", described: "ok" };
+
+export function ImagesClient({ rows, runId }: { rows: ImageRow[]; runId: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const urlQ = searchParams.get("q") ?? "";
+  const altState = ALT_STATES.includes(searchParams.get("alt") as AltState) ? (searchParams.get("alt") as AltState) : null;
+  const noDims = searchParams.get("dims") === "missing";
+  const sortKey = (searchParams.get("sort") === "url" ? "url" : "usage") as SortKey;
+  const sortDir = searchParams.get("dir") === "asc" ? "asc" : "desc";
+
+  const [qInput, setQInput] = useState(urlQ);
+  const [syncedUrlQ, setSyncedUrlQ] = useState(urlQ);
+  if (urlQ !== syncedUrlQ) {
+    setSyncedUrlQ(urlQ);
+    setQInput(urlQ);
+  }
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [visible, setVisible] = useState(PAGE_SIZE);
+
+  function updateParams(patch: Record<string, string | null>) {
+    const next = new URLSearchParams(searchParams.toString());
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null || v === "") next.delete(k);
+      else next.set(k, v);
+    }
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+    setVisible(PAGE_SIZE);
+  }
+
+  function handleQChange(value: string) {
+    setQInput(value);
+    setVisible(PAGE_SIZE);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => updateParams({ q: value || null }), 250);
+  }
+
+  function toggleSort(key: SortKey) {
+    if (sortKey !== key) updateParams({ sort: key, dir: "desc" });
+    else if (sortDir === "desc") updateParams({ sort: key, dir: "asc" });
+    else updateParams({ sort: null, dir: null });
+  }
+
+  const counts = useMemo(() => {
+    const c: Record<AltState, number> = { missing: 0, empty: 0, described: 0 };
+    let noDimsCount = 0;
+    for (const r of rows) {
+      c[r.altState]++;
+      if (!r.hasDimensions) noDimsCount++;
+    }
+    return { ...c, noDimsCount };
+  }, [rows]);
+
+  const filtered = useMemo(() => {
+    let items = rows;
+    if (altState) items = items.filter((r) => r.altState === altState);
+    if (noDims) items = items.filter((r) => !r.hasDimensions);
+    if (qInput.trim()) {
+      const needle = qInput.trim().toLowerCase();
+      items = items.filter((r) => r.url.toLowerCase().includes(needle) || (r.alt ?? "").toLowerCase().includes(needle));
+    }
+    const dir = sortDir === "asc" ? 1 : -1;
+    items = [...items].sort((a, b) => (sortKey === "url" ? a.url.localeCompare(b.url) * dir : (a.usageCount - b.usageCount) * dir));
+    return items;
+  }, [rows, altState, noDims, qInput, sortKey, sortDir]);
+
+  const visibleRows = filtered.slice(0, visible);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex h-9 max-w-md items-center gap-2 rounded-control border border-border bg-subtle px-2.5 focus-within:ring-2 focus-within:ring-primary">
+        <Search size={14} strokeWidth={1.75} className="shrink-0 text-faint" aria-hidden="true" />
+        <input
+          type="search"
+          value={qInput}
+          onChange={(e) => handleQChange(e.target.value)}
+          placeholder="Search image URL or alt text..."
+          aria-label="Search images"
+          className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-faint outline-none"
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-faint">Alt text</span>
+        <Chip active={altState === null} onClick={() => updateParams({ alt: null })}>
+          All ({rows.length})
+        </Chip>
+        {ALT_STATES.map((s) => (
+          <Chip key={s} active={altState === s} onClick={() => updateParams({ alt: altState === s ? null : s })}>
+            {ALT_LABEL[s]} ({counts[s]})
+          </Chip>
+        ))}
+        <Chip active={noDims} onClick={() => updateParams({ dims: noDims ? null : "missing" })}>
+          No dimensions ({counts.noDimsCount})
+        </Chip>
+      </div>
+
+      <p className="text-xs text-secondary">
+        {filtered.length} of {rows.length} unique image{rows.length === 1 ? "" : "s"}
+      </p>
+
+      {filtered.length === 0 ? (
+        <EmptyState icon={ImageOff} title="No images match these filters" />
+      ) : (
+        <>
+          <TableContainer>
+            <TableHead>
+              <Th sortDir={sortKey === "url" ? sortDir : null} onSort={() => toggleSort("url")}>
+                Image
+              </Th>
+              <Th>Alt state</Th>
+              <Th>Dimensions</Th>
+              <Th>Format</Th>
+              <Th sortDir={sortKey === "usage" ? sortDir : null} onSort={() => toggleSort("usage")}>
+                Used on
+              </Th>
+              <Th>First pages</Th>
+            </TableHead>
+            <tbody>
+              {visibleRows.map((row) => (
+                <Tr key={row.key}>
+                  <Td className="max-w-sm truncate normal-case">
+                    <a href={row.url} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+                      {row.url}
+                    </a>
+                  </Td>
+                  <Td className="normal-case">
+                    <Badge tone={ALT_TONE[row.altState]}>{ALT_LABEL[row.altState]}</Badge>
+                  </Td>
+                  <Td>{row.hasDimensions ? `${row.width}×${row.height}` : <span className="text-faint">—</span>}</Td>
+                  <Td className="normal-case">{row.format ?? <span className="text-faint">—</span>}</Td>
+                  <Td className="tabular-nums">{row.usageCount}</Td>
+                  <Td className="max-w-xs truncate normal-case">
+                    {row.pages.slice(0, 2).map((p, i) => (
+                      <span key={p.pageId}>
+                        {i > 0 && ", "}
+                        <Link href={`/pages/${p.pageId}?run=${encodeURIComponent(runId)}`} className="text-primary underline underline-offset-2">
+                          {p.url}
+                        </Link>
+                      </span>
+                    ))}
+                  </Td>
+                </Tr>
+              ))}
+            </tbody>
+          </TableContainer>
+
+          {visible < filtered.length && (
+            <div className="flex justify-center">
+              <Button variant="outline" size="sm" onClick={() => setVisible((v) => v + PAGE_SIZE)}>
+                Show {Math.min(PAGE_SIZE, filtered.length - visible)} more
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

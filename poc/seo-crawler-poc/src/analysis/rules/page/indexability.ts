@@ -88,6 +88,70 @@ function canonicalAbsent(): PageRule {
   };
 }
 
+function nofollow(): PageRule {
+  const meta: RuleMeta = {
+    id: "nofollow",
+    category: "indexability",
+    defaultSeverity: "warning",
+    description: "Page tells crawlers not to follow its links, via <meta name=\"robots\"> or the X-Robots-Tag header.",
+    howToFix: "Remove nofollow from the robots meta tag or X-Robots-Tag unless it is deliberate — anything reachable only from here becomes unfollowable.",
+    dataRequirements: [],
+  };
+  return {
+    meta,
+    evaluate(page, config) {
+      if (!page.robots.nofollow) return [];
+      return [
+        issueFor(meta, config, page, {
+          message: "Page is set to nofollow — its outbound links will not be followed.",
+          evidence: [
+            { field: "robots.nofollow", value: true },
+            { field: "robots.meta", value: page.robots.meta },
+          ],
+        }),
+      ];
+    },
+  };
+}
+
+/* Kishan's rules.js 'soft-404': wording alone would false-fire a genuine article ABOUT 404 pages,
+ * so both signals are required — thin AND the page reads like an error page. */
+const SOFT_404_PATTERN = /\b(404|page not found|not found|doesn'?t exist|no longer available|nothing here)\b/i;
+
+function soft404(): PageRule {
+  const meta: RuleMeta = {
+    id: "soft-404",
+    category: "indexability",
+    defaultSeverity: "warning", // heuristic (wording match): never error, per MF-5
+    description:
+      "Page answers 200 but reads like a \"not found\" page (short, and its title/H1 uses 404-style wording). " +
+      "Search engines index it as a real page, so it accumulates as thin content competing with genuine pages.",
+    howToFix: "Return a real 404 (or 410 if the removal is permanent) for this URL. A custom-designed error page is fine — the status code is what matters.",
+    dataRequirements: [],
+  };
+  return {
+    meta,
+    evaluate(page, config) {
+      if (page.statusCode === null || page.statusCode !== 200) return [];
+      const maxWords = config.thresholds.soft404MaxWords ?? 120;
+      if (page.content.wordCount > maxWords) return [];
+      const text = `${page.title ?? ""} ${page.headings.h1.join(" ")}`;
+      if (!SOFT_404_PATTERN.test(text)) return [];
+      return [
+        issueFor(meta, config, page, {
+          message: `Page returns 200 but reads like a "not found" page (${page.content.wordCount} words, title/H1 uses 404-style wording).`,
+          evidence: [
+            { field: "content.wordCount", value: page.content.wordCount },
+            { field: "title", value: page.title },
+            { field: "headings.h1", value: page.headings.h1 },
+          ],
+          threshold: `wordCount ${page.content.wordCount} <= max ${maxWords}, title/H1 matches soft-404 wording`,
+        }),
+      ];
+    },
+  };
+}
+
 function metaRefreshPresent(): PageRule {
   const meta: RuleMeta = {
     id: "meta-refresh-present",
@@ -113,5 +177,5 @@ function metaRefreshPresent(): PageRule {
 }
 
 export function indexabilityRules(): PageRule[] {
-  return [noindex(), canonicalMismatch(), canonicalAbsent(), metaRefreshPresent()];
+  return [noindex(), nofollow(), soft404(), canonicalMismatch(), canonicalAbsent(), metaRefreshPresent()];
 }

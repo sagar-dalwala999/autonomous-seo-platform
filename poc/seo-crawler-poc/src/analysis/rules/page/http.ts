@@ -1,7 +1,7 @@
 /** HTTP status / response-time rule pack. */
 import type { RuleMeta } from "../../../models/types";
 import type { PageRule } from "./index";
-import { issueFor } from "./shared";
+import { captured, issueFor } from "./shared";
 
 function http4xx(): PageRule {
   const meta: RuleMeta = {
@@ -54,13 +54,18 @@ function slowPage(): PageRule {
     id: "slow-page",
     category: "http",
     defaultSeverity: "warning", // heuristic (MF-5): threshold-based, never error
-    description: "Page response time exceeds the configured slow-page threshold.",
+    description:
+      "Page response time exceeds the configured slow-page threshold. Scored on HTTP-fetched pages only — " +
+      "the Playwright pass records nav-start-to-post-settle wall time (networkidle wait + adaptive settle + " +
+      "screenshot), which is not a response time and cannot be compared against this threshold.",
     howToFix: "Investigate server/TTFB latency for this URL.",
-    dataRequirements: [],
+    dataRequirements: ["performance.responseTimeMs"],
   };
   return {
     meta,
     evaluate(page, config) {
+      // See the description: browser wall time on rendered pages clears 2s even on localhost.
+      if (page.renderedWith === "playwright") return null;
       const ms = page.performance.responseTimeMs;
       if (ms === null || ms <= config.thresholds.slowPageMs) return [];
       return [
@@ -74,6 +79,36 @@ function slowPage(): PageRule {
   };
 }
 
+function noCompression(): PageRule {
+  const meta: RuleMeta = {
+    id: "no-compression",
+    category: "http",
+    defaultSeverity: "notice",
+    description: "Response has no Content-Encoding (gzip/brotli) and is large enough for compression to matter.",
+    howToFix: "Enable gzip or brotli for text/html at the server or CDN — text compresses by roughly 70%.",
+    dataRequirements: ["pageStats"],
+  };
+  return {
+    meta,
+    evaluate(page, config) {
+      if (!captured(page.pageStats, "contentEncoding", "htmlBytes")) return null;
+      if (page.pageStats.contentEncoding) return [];
+      const minBytes = config.thresholds.noCompressionMinBytes ?? 2000;
+      if (page.pageStats.htmlBytes <= minBytes) return [];
+      return [
+        issueFor(meta, config, page, {
+          message: `${Math.round(page.pageStats.htmlBytes / 1024)} KB sent with no Content-Encoding.`,
+          evidence: [
+            { field: "pageStats.contentEncoding", value: null },
+            { field: "pageStats.htmlBytes", value: page.pageStats.htmlBytes },
+          ],
+          threshold: `htmlBytes ${page.pageStats.htmlBytes} > min ${minBytes}, contentEncoding absent`,
+        }),
+      ];
+    },
+  };
+}
+
 export function httpRules(): PageRule[] {
-  return [http4xx(), http5xx(), slowPage()];
+  return [http4xx(), http5xx(), slowPage(), noCompression()];
 }

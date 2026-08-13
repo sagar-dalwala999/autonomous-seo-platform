@@ -35,6 +35,28 @@ export interface AnalysisConfig {
     /** Both are XML sitemap protocol HARD limits — a sitemap over either is invalid, not merely large. */
     sitemapMaxUrls?: number;
     sitemapMaxBytes?: number;
+    /** 0..1 share of rendered words that must be JS-only for content-requires-javascript to fire. */
+    jsOnlyContentRatio?: number;
+    /* ── Slice: indexability/http/on-page/redirects/robots/sitemap/links port wave. All optional
+     * so pre-existing configs still validate; each rule falls back to its own local default. ── */
+    /** excessive-links: internal+external link count on one page past which it's flagged. */
+    excessiveLinksCount?: number;
+    /** page-buried-too-deep: crawl.depth past which a page is "buried". */
+    deepPageDepth?: number;
+    /** soft-404: word-count ceiling under which 404-style wording on a 200 is flagged. */
+    soft404MaxWords?: number;
+    /** long-content-no-subheadings: word count past which <=1 subheading is flagged. */
+    longContentNoSubheadingsWords?: number;
+    /** high-empty-anchor-ratio: share (0..1) of a page's links with blank anchor text. */
+    emptyAnchorRatioMax?: number;
+    /** no-compression: htmlBytes floor below which an uncompressed response isn't worth flagging. */
+    noCompressionMinBytes?: number;
+    /* content/structured-data/duplicates/orphans family port wave (data-rules audit). Same
+     * optional + local-default-fallback pattern as the rest of this block. */
+    /** low-readability: Flesch Reading Ease score below which body text is flagged. */
+    fleschReadingEaseMin?: number;
+    /** oversized-html: htmlBytes past which the document itself (not subresources) is flagged. */
+    oversizedHtmlBytes?: number;
   };
 }
 

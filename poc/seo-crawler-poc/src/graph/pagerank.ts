@@ -24,12 +24,29 @@ interface GraphNode {
   outEdges: number[];
 }
 
-/** Node identity mirrors the analyzer's alias-safe key (helpers.ts pathnameOf(primaryUrl)) so a
- * link's target resolves to the same node the analyzer's own inlink evidence uses. Known
- * simplification inherited from that convention: two crawled URLs differing only in query string
- * collapse to the same pathname key (rare in practice, matches existing analyzer behavior). */
+/** Path + query, scheme/host stripped — same alias tolerance as the analyzer's pathnameOf
+ * (host aliasing, e.g. www vs bare, is a deliberate crawl-scope decision made upstream, not this
+ * module's to second-guess), but WITHOUT pathnameOf's query-string collapse. That collapse was a
+ * measured defect: two distinct crawled pages differing only in query string (e.g. "/?a=1" vs
+ * "/?a=2", or an ?lang= variant) were silently merged onto one graph node — the second one lost
+ * its own rank, inlink count, and orphan eligibility because indexByKey below can only ever route
+ * a link target to ONE node per key. Verified on real runs (see graph tests + PR notes): a
+ * 1,051-page run had 10 pages invisible to link-target resolution under pathname-only keying,
+ * a 185-page run had 11 — full path+query identity resolves all but the genuine host/scheme
+ * alias cases (which are correctly still shared, by design). */
 function keyOf(page: CrawledPage): string {
-  return pathnameOf(primaryUrl(page)) ?? primaryUrl(page);
+  return pathAndQueryOf(primaryUrl(page)) ?? primaryUrl(page);
+}
+
+function pathAndQueryOf(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const pathname = u.pathname.length > 1 && u.pathname.endsWith("/") ? u.pathname.slice(0, -1) : u.pathname;
+    return pathname + u.search;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -60,7 +77,8 @@ export function computeGraph(
     };
   }
 
-  // First page wins a key collision (query-string-only URL pairs) — see keyOf's doc comment.
+  // First page wins a remaining key collision — now only genuine host/scheme aliases (www vs
+  // bare, http vs https), not query-string variants. See keyOf's doc comment.
   const indexByKey = new Map<string, number>();
   nodes.forEach((node, i) => {
     if (!indexByKey.has(node.key)) indexByKey.set(node.key, i);
@@ -70,9 +88,9 @@ export function computeGraph(
     const seen = new Set<number>();
     for (const link of node.page.links) {
       if (link.type !== "internal") continue;
-      const targetPath = pathnameOf(link.targetNormalized ?? link.target);
-      if (!targetPath) continue;
-      const targetIndex = indexByKey.get(targetPath);
+      const targetKey = pathAndQueryOf(link.targetNormalized ?? link.target);
+      if (!targetKey) continue;
+      const targetIndex = indexByKey.get(targetKey);
       if (targetIndex === undefined || targetIndex === sourceIndex || seen.has(targetIndex)) continue;
       seen.add(targetIndex);
       node.outEdges.push(targetIndex);
@@ -138,12 +156,20 @@ export function computeGraph(
     return Math.round(Math.max(1, Math.min(100, scaled)));
   }
 
-  // buildInlinkOccurrences doesn't know about self-links (it's a generic analyzer helper) — a
-  // page linking to itself isn't a vote of confidence from elsewhere, so filter it out here,
-  // consistent with self-links already being excluded from PageRank edges above.
-  const inlinksByNode = nodes.map((node) =>
-    (inlinkOccurrences.get(node.key) ?? []).filter((o) => o.source !== node.page),
-  );
+  // buildInlinkOccurrences is keyed by bare PATHNAME (helpers.ts owns that convention), coarser
+  // than this module's path+query node identity — a query-string sibling page would otherwise
+  // inherit its neighbor's whole inlink bucket. Narrow the pathname-level bucket down to the
+  // occurrences whose own resolved target actually matches this node's key, and (as before) drop
+  // self-links, which aren't a vote of confidence from elsewhere.
+  const inlinksByNode = nodes.map((node) => {
+    const pathname = pathnameOf(primaryUrl(node.page)) ?? primaryUrl(node.page);
+    const candidates = inlinkOccurrences.get(pathname) ?? [];
+    return candidates.filter((o) => {
+      if (o.source === node.page) return false;
+      const occurrenceTargetKey = pathAndQueryOf(o.link.targetNormalized ?? o.link.target);
+      return occurrenceTargetKey === node.key;
+    });
+  });
 
   const scores: PageGraphScore[] = nodes.map((node, i) => {
     const occurrences = inlinksByNode[i]!;

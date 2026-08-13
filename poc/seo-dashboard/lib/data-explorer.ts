@@ -8,7 +8,7 @@ export { STATUS_BUCKETS, SORT_KEYS, statusTone, sectionOf, filterAndSortRows, gr
 
 /** Unifies pages/*.json + failures.json + blocked.json into one explorer row list (POC scale). */
 export async function buildExplorerRows(runId: string): Promise<ExplorerRow[]> {
-  const [{ items: pages }, { failures, blocked }] = await Promise.all([getPages(runId, {}), getRun(runId)]);
+  const [pages, { failures, blocked }] = await Promise.all([getPages(runId), getRun(runId)]);
 
   const rows: ExplorerRow[] = pages.map((p) => ({
     key: `page-${p.pageId}`,

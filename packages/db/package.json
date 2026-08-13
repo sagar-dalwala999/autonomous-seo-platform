@@ -1,0 +1,31 @@
+{
+  "name": "@seo-platform/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Prisma + Supabase Postgres persistence layer for the Autonomous SEO Platform crawler",
+  "scripts": {
+    "generate": "prisma generate",
+    "validate": "prisma validate",
+    "migrate:deploy": "prisma migrate deploy",
+    "migrate:diff": "prisma migrate diff",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "import:legacy": "tsx src/importer/cli.ts",
+    "prune": "tsx src/retention/cli.ts",
+    "roundtrip": "tsx src/test/roundtrip.ts",
+    "tenant-scope-test": "tsx src/test/tenantScope.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "@supabase/supabase-js": "^2.112.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "prisma": "6.19.3",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

@@ -2,6 +2,7 @@ import type { CheerioAPI } from "cheerio";
 import { createHash } from "node:crypto";
 import type { PageContent } from "../models/types";
 import { collapseWhitespace } from "./shared";
+import { computeKeywordDensity, computeReadability } from "./readability";
 
 type Nodes = ReturnType<CheerioAPI["root"]>;
 
@@ -65,5 +66,7 @@ export function extractContent($: CheerioAPI): PageContent {
     contentHash: createHash("sha256").update(text.toLowerCase()).digest("hex"),
     contentAreaMethod: method,
     ariaHiddenWordCount: countAriaHidden($, area),
+    readability: computeReadability(text),
+    keywordDensity: computeKeywordDensity(text),
   };
 }

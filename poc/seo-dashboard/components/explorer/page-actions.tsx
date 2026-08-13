@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Clipboard, Download, ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { Check, Clipboard, Download, ExternalLink, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CrawledPageWithId } from "@/lib/types";
 
@@ -31,6 +32,15 @@ export function PageActions({ page, runId, hasRawHtml }: { page: CrawledPageWith
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {/* The embedded replay below shares this page with 15 other panels in a narrow column;
+          /preview is the same component full-width, and works even when no raw HTML was stored. */}
+      <Link
+        href={`/pages/${encodeURIComponent(page.pageId)}/preview?run=${encodeURIComponent(runId)}`}
+        className={LINK_BUTTON_CLASS}
+      >
+        <Maximize2 size={14} strokeWidth={1.75} aria-hidden="true" />
+        Full-page replay
+      </Link>
       {hasRawHtml ? (
         <>
           <a href={rawUrl} target="_blank" rel="noopener noreferrer" className={LINK_BUTTON_CLASS}>

@@ -20,7 +20,9 @@ const weaklyLinkedMeta: RuleMeta = {
   id: "weakly-linked",
   category: "links",
   defaultSeverity: "warning",
-  description: "A crawled non-seed page has exactly one internal inlink.",
+  description:
+    "A crawled non-seed page has at most thresholds.weakInlinkCount internal inlinks (self-links excluded). " +
+    "Zero inlinks is orphan-page's finding, not this one.",
   howToFix: "Add more internal links to this page from relevant content.",
   dataRequirements: ["crawl"],
 };
@@ -38,7 +40,8 @@ export const weaklyLinkedRule: SiteRule = {
       const path = pathnameOf(primaryUrl(page));
       if (!path) continue;
       const occ = occurrences.get(path) ?? [];
-      if (occ.length !== want) continue;
+      // Threshold, not equality: raising weakInlinkCount to 3 must catch 1, 2 and 3 inlinks too.
+      if (occ.length === 0 || occ.length > want) continue;
       const sources = occ.map((o) => primaryUrl(o.source));
       issues.push({
         ruleId: weaklyLinkedMeta.id,
@@ -49,7 +52,7 @@ export const weaklyLinkedRule: SiteRule = {
         pageId: pageIdFor(page.normalizedUrl),
         message: `${primaryUrl(page)} has only ${occ.length} internal inlink(s), from: ${sources.join(", ")}`,
         howToFix: weaklyLinkedMeta.howToFix,
-        threshold: `inlink count === ${want} (was ${occ.length})`,
+        threshold: `inlink count <= ${want} (was ${occ.length})`,
         evidence: occ.map((o) => ({
           field: `links[${o.linkIndex}].targetNormalized`,
           value: o.link.targetNormalized ?? o.link.target,
@@ -207,6 +210,219 @@ export const authRequiredLinkRule: SiteRule = {
           howToFix: authRequiredLinkMeta.howToFix,
           evidence: [{ field: `links[${index}].targetNormalized`, value: link.targetNormalized ?? link.target }],
         });
+      });
+    }
+    return issues;
+  },
+};
+
+/* Kishan's rules.js 'canonical-chain': a canonical is meant to name the FINAL destination, not
+ * the next hop. Distinct from canonicalTargetValidityRule above, which only checks the target's
+ * own status/redirect/noindex state, not whether the target ITSELF canonicalises onward. */
+const canonicalChainMeta: RuleMeta = {
+  id: "canonical-chain",
+  category: "canonical",
+  defaultSeverity: "warning",
+  description: "A page's canonical points at a page that itself canonicalises somewhere else.",
+  howToFix: "Point every canonical in the chain straight at the final URL.",
+  dataRequirements: ["canonical"],
+};
+
+export const canonicalChainRule: SiteRule = {
+  meta: canonicalChainMeta,
+  evaluate(ctx, config) {
+    if (!isRuleEnabled(canonicalChainMeta.id, config)) return null;
+    const severity = resolvedSeverity(canonicalChainMeta.id, canonicalChainMeta.defaultSeverity, config);
+    const issues: Issue[] = [];
+    for (const page of ctx.pages) {
+      if (!page.canonical) continue;
+      const selfPath = pathnameOf(primaryUrl(page));
+      const firstPath = pathnameOf(page.canonical);
+      if (!firstPath || firstPath === selfPath) continue;
+      const middle = pageByPath(ctx.pages, firstPath);
+      // pageByPath matches on EITHER primaryUrl OR finalUrl. Two real false positives found by
+      // spot-check both had this shape: several source URLs redirect to the same undercrawled
+      // destination and each self-canonicalises to it (arena.ai/cookie-policy; three separate
+      // nousresearch.com aliases → /collections/products) — pageByPath resolves "middle" to one
+      // of those ALIASES, not a genuinely distinct second hop, because the destination itself was
+      // never independently crawled at its own URL. Guard on both: middle being literally `page`
+      // (own finalUrl matched its own canonical), and middle's canonical simply agreeing with
+      // where middle itself already lands (finalUrl) — neither is a further hop.
+      if (!middle?.canonical || middle === page) continue;
+      const middlePath = pathnameOf(primaryUrl(middle));
+      const middleFinalPath = pathnameOf(middle.finalUrl);
+      const secondPath = pathnameOf(middle.canonical);
+      if (!secondPath || secondPath === middlePath || secondPath === middleFinalPath) continue;
+      issues.push({
+        ruleId: canonicalChainMeta.id,
+        category: canonicalChainMeta.category,
+        severity,
+        scope: "site",
+        url: primaryUrl(page),
+        pageId: pageIdFor(page.normalizedUrl),
+        message: `Canonical chain: ${primaryUrl(page)} → ${page.canonical} → ${middle.canonical}`,
+        howToFix: canonicalChainMeta.howToFix,
+        evidence: [
+          { field: "canonical", value: page.canonical },
+          { field: "canonical", value: middle.canonical, pageId: pageIdFor(middle.normalizedUrl) },
+        ],
+      });
+    }
+    return issues;
+  },
+};
+
+const excessiveLinksMeta: RuleMeta = {
+  id: "excessive-links",
+  category: "links",
+  defaultSeverity: "notice",
+  description: "A page has more internal+external links than the configured maximum.",
+  howToFix: "Paginate long listings and trim navigation that repeats every link on every page.",
+  dataRequirements: ["links"],
+};
+
+export const excessiveLinksRule: SiteRule = {
+  meta: excessiveLinksMeta,
+  evaluate(ctx, config) {
+    if (!isRuleEnabled(excessiveLinksMeta.id, config)) return null;
+    const severity = resolvedSeverity(excessiveLinksMeta.id, excessiveLinksMeta.defaultSeverity, config);
+    const max = config.thresholds.excessiveLinksCount ?? 300;
+    const issues: Issue[] = [];
+    for (const page of ctx.pages) {
+      if (page.links.length <= max) continue;
+      const internal = page.links.filter((l) => l.type === "internal").length;
+      const external = page.links.length - internal;
+      issues.push({
+        ruleId: excessiveLinksMeta.id,
+        category: excessiveLinksMeta.category,
+        severity,
+        scope: "site",
+        url: primaryUrl(page),
+        pageId: pageIdFor(page.normalizedUrl),
+        message: `${primaryUrl(page)} has ${page.links.length} links (${internal} internal, ${external} external)`,
+        howToFix: excessiveLinksMeta.howToFix,
+        threshold: `links.length ${page.links.length} > max ${max}`,
+        evidence: [{ field: "links", value: page.links.length }],
+      });
+    }
+    return issues;
+  },
+};
+
+/* "page-buried-too-deep" is NOT defined here — site/orphans.ts (site-structure family, not
+ * mine) already implements it (config key thresholds.maxCrawlDepth). Checked site/index.ts
+ * before registering to avoid a duplicate ruleId double-counting the same finding. */
+
+/* Kishan's rules.js VAGUE_ANCHOR list — anchor text that describes the click rather than the
+ * destination. Not a business threshold (nothing to tune per-site), so kept as a local constant
+ * rather than routed through config, matching link-consistency.ts's stripWww() precedent. */
+const VAGUE_ANCHOR = /^(click here|here|read more|more|learn more|find out more|continue|continue reading|this|this page|link|download|see more|view more|details|go)$/i;
+
+const vagueAnchorMeta: RuleMeta = {
+  id: "vague-anchor-text",
+  category: "links",
+  defaultSeverity: "notice",
+  description: "A link's anchor text describes the action ('click here', 'read more') rather than the destination.",
+  howToFix: "Say where the link goes: \"read the pricing guide\" rather than \"read more\".",
+  dataRequirements: ["links"],
+};
+
+export const vagueAnchorTextRule: SiteRule = {
+  meta: vagueAnchorMeta,
+  evaluate(ctx, config) {
+    if (!isRuleEnabled(vagueAnchorMeta.id, config)) return null;
+    const severity = resolvedSeverity(vagueAnchorMeta.id, vagueAnchorMeta.defaultSeverity, config);
+    const issues: Issue[] = [];
+    for (const page of ctx.pages) {
+      const hits = page.links
+        .map((link, index) => ({ link, index }))
+        .filter(({ link }) => link.anchor && VAGUE_ANCHOR.test(link.anchor.trim()));
+      if (hits.length === 0) continue;
+      const distinct = [...new Set(hits.map(({ link }) => `"${link.anchor.trim()}"`))].slice(0, 3);
+      issues.push({
+        ruleId: vagueAnchorMeta.id,
+        category: vagueAnchorMeta.category,
+        severity,
+        scope: "site",
+        url: primaryUrl(page),
+        pageId: pageIdFor(page.normalizedUrl),
+        message: `${primaryUrl(page)} has ${hits.length} link(s) with uninformative anchor text: ${distinct.join(", ")}`,
+        howToFix: vagueAnchorMeta.howToFix,
+        evidence: hits.slice(0, 5).map(({ link, index }) => ({ field: `links[${index}].anchor`, value: link.anchor })),
+      });
+    }
+    return issues;
+  },
+};
+
+const emptyAnchorRatioMeta: RuleMeta = {
+  id: "high-empty-anchor-ratio",
+  category: "links",
+  defaultSeverity: "notice",
+  description: "More than the configured share of a page's internal links carry no anchor text.",
+  howToFix: "Give each link real anchor text describing its destination — an empty anchor tells neither readers nor search engines what it points at.",
+  dataRequirements: ["links"],
+};
+
+export const highEmptyAnchorRatioRule: SiteRule = {
+  meta: emptyAnchorRatioMeta,
+  evaluate(ctx, config) {
+    if (!isRuleEnabled(emptyAnchorRatioMeta.id, config)) return null;
+    const severity = resolvedSeverity(emptyAnchorRatioMeta.id, emptyAnchorRatioMeta.defaultSeverity, config);
+    const maxRatio = config.thresholds.emptyAnchorRatioMax ?? 0.3;
+    const issues: Issue[] = [];
+    for (const page of ctx.pages) {
+      const internal = page.links.map((link, index) => ({ link, index })).filter(({ link }) => link.type === "internal");
+      if (internal.length === 0) continue;
+      const blank = internal.filter(({ link }) => !link.anchor || link.anchor.trim() === "");
+      const ratio = blank.length / internal.length;
+      if (ratio <= maxRatio) continue;
+      issues.push({
+        ruleId: emptyAnchorRatioMeta.id,
+        category: emptyAnchorRatioMeta.category,
+        severity,
+        scope: "site",
+        url: primaryUrl(page),
+        pageId: pageIdFor(page.normalizedUrl),
+        message: `${primaryUrl(page)} has ${blank.length} of ${internal.length} internal links with no anchor text`,
+        howToFix: emptyAnchorRatioMeta.howToFix,
+        threshold: `blank ratio ${ratio.toFixed(2)} > max ${maxRatio}`,
+        evidence: blank.slice(0, 5).map(({ index }) => ({ field: `links[${index}].anchor`, value: "" })),
+      });
+    }
+    return issues;
+  },
+};
+
+const noInternalLinksMeta: RuleMeta = {
+  id: "page-no-internal-links",
+  category: "links",
+  defaultSeverity: "warning",
+  description: "A successfully loaded page has zero outgoing internal links.",
+  howToFix: "Link to at least one other relevant page on the site — a dead-end page passes no internal link equity onward.",
+  dataRequirements: ["links"],
+};
+
+export const pageNoInternalLinksRule: SiteRule = {
+  meta: noInternalLinksMeta,
+  evaluate(ctx, config) {
+    if (!isRuleEnabled(noInternalLinksMeta.id, config)) return null;
+    const severity = resolvedSeverity(noInternalLinksMeta.id, noInternalLinksMeta.defaultSeverity, config);
+    const issues: Issue[] = [];
+    for (const page of ctx.pages) {
+      if (page.statusCode === null || page.statusCode >= 400) continue;
+      const internal = page.links.filter((l) => l.type === "internal").length;
+      if (internal > 0) continue;
+      issues.push({
+        ruleId: noInternalLinksMeta.id,
+        category: noInternalLinksMeta.category,
+        severity,
+        scope: "site",
+        url: primaryUrl(page),
+        pageId: pageIdFor(page.normalizedUrl),
+        message: `${primaryUrl(page)} links to nothing else on the site`,
+        howToFix: noInternalLinksMeta.howToFix,
+        evidence: [{ field: "links", value: page.links.length }],
       });
     }
     return issues;

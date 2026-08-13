@@ -154,4 +154,66 @@ describe("computeGraph", () => {
     expect(report.iterations).toBe(1);
     expect(report.converged).toBe(false);
   });
+
+  describe("query-string node identity (regression: measured defect — pathname-only keying silently merged distinct pages)", () => {
+    it("keeps two pages differing only by query string as separate nodes with separate scores", () => {
+      const base = makePage({ url: "https://x.test/search" });
+      const variant = makePage({ url: "https://x.test/search?q=tents" });
+      const linker = makePage({
+        url: "https://x.test/linker",
+        links: [makeLink("https://x.test/linker", "https://x.test/search?q=tents")],
+      });
+      const report = computeGraph([base, variant, linker], "query-id-run");
+
+      expect(report.pages).toHaveLength(3);
+      const baseScore = report.pages.find((p) => p.url === "https://x.test/search")!;
+      const variantScore = report.pages.find((p) => p.url === "https://x.test/search?q=tents")!;
+      expect(baseScore).toBeDefined();
+      expect(variantScore).toBeDefined();
+      // Only the query-string variant was actually linked to — the base URL must not inherit it.
+      expect(variantScore.uniqueInlinks).toBe(1);
+      expect(baseScore.uniqueInlinks).toBe(0);
+    });
+
+    it("routes an outlink to the exact query-string target it names, not a same-path sibling", () => {
+      const targetA = makePage({ url: "https://x.test/p?id=1" });
+      const targetB = makePage({ url: "https://x.test/p?id=2" });
+      const source = makePage({
+        url: "https://x.test/src",
+        links: [makeLink("https://x.test/src", "https://x.test/p?id=2")],
+      });
+      const report = computeGraph([targetA, targetB, source], "query-target-run");
+
+      const a = report.pages.find((p) => p.url === "https://x.test/p?id=1")!;
+      const b = report.pages.find((p) => p.url === "https://x.test/p?id=2")!;
+      expect(a.uniqueInlinks).toBe(0);
+      expect(b.uniqueInlinks).toBe(1);
+    });
+
+    it("flags a zero-inlink query-string variant as its own orphan, independent of a same-path sibling", () => {
+      const seed = makePage({ url: "https://x.test/", crawl: { depth: 0, parentUrl: null, discoverySources: ["seed"] } });
+      const linkedBase = makePage({ url: "https://x.test/hub" });
+      seed.links = [makeLink("https://x.test/", "https://x.test/hub")];
+      const orphanVariant = makePage({ url: "https://x.test/hub?ref=email" });
+
+      const report = computeGraph([seed, linkedBase, orphanVariant], "query-orphan-run");
+      expect(report.orphans).toEqual(["https://x.test/hub?ref=email"]);
+      expect(report.orphans).not.toContain("https://x.test/hub");
+    });
+
+    it("still shares identity across host/scheme aliasing (unchanged, deliberate behavior)", () => {
+      const bare = makePage({ url: "https://x.test/jobs" });
+      const www = makePage({ url: "https://www.x.test/jobs" });
+      const linker = makePage({
+        url: "https://x.test/linker",
+        links: [makeLink("https://x.test/linker", "https://www.x.test/jobs")],
+      });
+      const report = computeGraph([bare, www, linker], "alias-run");
+      // Both alias variants resolve to the same node identity (path-only, host stripped) —
+      // the FIRST one in input order wins, exactly as before this fix.
+      const bareScore = report.pages.find((p) => p.url === "https://x.test/jobs")!;
+      expect(bareScore.uniqueInlinks).toBe(1);
+      expect(report.pages).toHaveLength(3);
+    });
+  });
 });

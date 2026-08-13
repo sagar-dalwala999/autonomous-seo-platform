@@ -2,7 +2,7 @@
  * gap surfaced by the claude-seo teardown (research/competitor-claude-seo.md §4). */
 import type { RuleMeta } from "../../../models/types";
 import type { PageRule } from "./index";
-import { issueFor } from "./shared";
+import { captured, issueFor } from "./shared";
 
 function jsAppliedNoindex(): PageRule {
   const meta: RuleMeta = {
@@ -103,6 +103,103 @@ function canonicalChangedByJs(): PageRule {
   };
 }
 
+/** Fraction of the rendered word count that must be JS-only before the page counts as
+ * render-dependent, used when a config predates this threshold. */
+const DEFAULT_JS_ONLY_CONTENT_RATIO = 0.5;
+
+function contentRequiresJavascript(): PageRule {
+  const meta: RuleMeta = {
+    id: "content-requires-javascript",
+    category: "indexability",
+    defaultSeverity: "warning",
+    description:
+      "Most of the page's body copy exists only after JavaScript runs. Google renders eventually but on a separate, slower queue, and most other crawlers " +
+      "(Bing's fallback, LLM fetchers, social unfurlers) never render at all — they see the near-empty raw HTML.",
+    howToFix: "Server-render or pre-render the primary content so it is present in the raw HTML response.",
+    dataRequirements: ["renderDivergence", "content.wordCount"],
+  };
+  return {
+    meta,
+    evaluate(page, config) {
+      const divergence = page.renderDivergence;
+      if (!captured(divergence, "wordCountDelta") || !captured(page.content, "wordCount")) return null;
+      const rendered = page.content.wordCount;
+      const jsOnly = divergence.wordCountDelta;
+      if (rendered <= 0 || jsOnly <= 0) return [];
+      const ratio = jsOnly / rendered;
+      const minRatio = config.thresholds.jsOnlyContentRatio ?? DEFAULT_JS_ONLY_CONTENT_RATIO;
+      // The absolute floor stops a 10-word page with an 8-word JS addition from clearing the ratio.
+      if (ratio < minRatio || jsOnly < config.thresholds.thinContentWords) return [];
+      return [
+        issueFor(meta, config, page, {
+          message: `${Math.round(ratio * 100)}% of the page's ${rendered} words (${jsOnly}) are absent from the raw HTML and only appear after rendering.`,
+          evidence: [
+            { field: "renderDivergence.wordCountDelta", value: jsOnly },
+            { field: "content.wordCount", value: rendered },
+            { field: "renderSignals", value: page.renderSignals },
+          ],
+          threshold: `JS-only share ${ratio.toFixed(2)} >= ${minRatio} and ${jsOnly} JS-only words >= ${config.thresholds.thinContentWords}`,
+        }),
+      ];
+    },
+  };
+}
+
+/**
+ * Adapted from Kishan's "renders produced nothing new" (their site-level renderDiscards
+ * aggregate; we only have per-page divergence, so this is the per-page equivalent). A page that
+ * paid the cost of a full browser render but whose measured divergence shows no gain anywhere —
+ * words, links, title, description, canonical, noindex — got nothing for the render.
+ */
+function renderAddedNothing(): PageRule {
+  const meta: RuleMeta = {
+    id: "render-added-nothing",
+    category: "performance",
+    defaultSeverity: "notice",
+    description: "Page was escalated to a full browser render, but the rendered result added no words, links, or SEO-field changes over the raw HTML — the render cost bought nothing.",
+    howToFix: "Investigate why JS-rendering escalation triggered for this page; if the content is genuinely static, the escalation heuristic may be over-firing.",
+    dataRequirements: ["renderDivergence"],
+  };
+  return {
+    meta,
+    evaluate(page, config) {
+      if (page.renderedWith !== "playwright") return []; // never escalated — not this rule's concern
+      const d = page.renderDivergence;
+      if (
+        !captured(
+          d,
+          "wordCountDelta",
+          "linkCountDelta",
+          "titleChanged",
+          "metaDescriptionChanged",
+          "canonicalChanged",
+          "noindexChanged",
+        )
+      ) {
+        return null;
+      }
+      const gainedNothing =
+        d.wordCountDelta <= 0 &&
+        d.linkCountDelta <= 0 &&
+        !d.titleChanged &&
+        !d.metaDescriptionChanged &&
+        !d.canonicalChanged &&
+        !d.noindexChanged;
+      if (!gainedNothing) return [];
+      return [
+        issueFor(meta, config, page, {
+          message: "Page was rendered in a full browser but the render added no measurable content or SEO-field changes.",
+          evidence: [
+            { field: "renderDivergence.wordCountDelta", value: d.wordCountDelta },
+            { field: "renderDivergence.linkCountDelta", value: d.linkCountDelta },
+            { field: "renderSignals", value: page.renderSignals },
+          ],
+        }),
+      ];
+    },
+  };
+}
+
 export function renderDivergenceRules(): PageRule[] {
-  return [jsAppliedNoindex(), noindexInRawHtmlOnly(), canonicalChangedByJs()];
+  return [jsAppliedNoindex(), noindexInRawHtmlOnly(), canonicalChangedByJs(), contentRequiresJavascript(), renderAddedNothing()];
 }

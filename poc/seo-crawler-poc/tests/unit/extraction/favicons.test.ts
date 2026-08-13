@@ -56,6 +56,51 @@ function svgBytes(markup: string): Uint8Array {
   return new TextEncoder().encode(markup);
 }
 
+function riffHeader(bytes: Uint8Array, chunk: string): void {
+  bytes.set([0x52, 0x49, 0x46, 0x46], 0); // "RIFF"
+  bytes.set([0x57, 0x45, 0x42, 0x50], 8); // "WEBP"
+  bytes.set(Array.from(chunk, (c) => c.charCodeAt(0)), 12);
+}
+
+function webpLossyBytes(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(30);
+  riffHeader(bytes, "VP8 ");
+  bytes.set([0x9d, 0x01, 0x2a], 23); // VP8 keyframe start code
+  const view = new DataView(bytes.buffer);
+  view.setUint16(26, width, true);
+  view.setUint16(28, height, true);
+  return bytes;
+}
+
+function webpLosslessBytes(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(30);
+  riffHeader(bytes, "VP8L");
+  bytes[20] = 0x2f; // VP8L signature
+  // 14 bits width-1 then 14 bits height-1, packed little-endian.
+  new DataView(bytes.buffer).setUint32(21, (width - 1) | ((height - 1) << 14), true);
+  return bytes;
+}
+
+function webpExtendedBytes(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(30);
+  riffHeader(bytes, "VP8X");
+  const w = width - 1;
+  const h = height - 1;
+  bytes.set([w & 0xff, (w >> 8) & 0xff, (w >> 16) & 0xff], 24);
+  bytes.set([h & 0xff, (h >> 8) & 0xff, (h >> 16) & 0xff], 27);
+  return bytes;
+}
+
+function bmpBytes(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(54);
+  bytes.set([0x42, 0x4d], 0); // "BM"
+  const view = new DataView(bytes.buffer);
+  view.setUint32(14, 40, true); // BITMAPINFOHEADER
+  view.setInt32(18, width, true);
+  view.setInt32(22, height, true);
+  return bytes;
+}
+
 function fakeFetcher(map: Record<string, FaviconFetchResult | "reject">): FaviconFetcher & { calls: string[] } {
   const calls: string[] = [];
   const fn = (async (url: string) => {
@@ -246,6 +291,17 @@ describe("decodeImageDimensions", () => {
 
   it("decodes JPEG by scanning markers to the SOF0 frame header, skipping APP0", () => {
     expect(decodeImageDimensions(jpegBytes(48, 64))).toEqual({ width: 48, height: 64 });
+  });
+
+  it("decodes all three WebP container variants", () => {
+    expect(decodeImageDimensions(webpLossyBytes(800, 600))).toEqual({ width: 800, height: 600 });
+    expect(decodeImageDimensions(webpLosslessBytes(1024, 768))).toEqual({ width: 1024, height: 768 });
+    expect(decodeImageDimensions(webpExtendedBytes(4000, 3000))).toEqual({ width: 4000, height: 3000 });
+  });
+
+  it("decodes BMP, treating a negative (top-down) height as a positive size", () => {
+    expect(decodeImageDimensions(bmpBytes(400, 300))).toEqual({ width: 400, height: 300 });
+    expect(decodeImageDimensions(bmpBytes(400, -300))).toEqual({ width: 400, height: 300 });
   });
 
   it("decodes SVG from explicit width/height attributes", () => {

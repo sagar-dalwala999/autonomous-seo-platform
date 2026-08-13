@@ -77,3 +77,62 @@ describe("meta-refresh-present (v2-optional)", () => {
     expect(issues![0]!.severity).toBe("warning");
   });
 });
+
+describe("nofollow", () => {
+  it("fires when robots.nofollow is true", () => {
+    const issues = rule("nofollow").evaluate(makePage({ robots: { meta: ["nofollow"], noindex: false, nofollow: true } }), config);
+    expect(issues).toHaveLength(1);
+    expect(issues![0]!.severity).toBe("warning");
+    expect(issues![0]!.evidence[0]).toEqual({ field: "robots.nofollow", value: true });
+  });
+
+  it("does not fire when robots.nofollow is false", () => {
+    expect(rule("nofollow").evaluate(makePage({ robots: { meta: [], noindex: false, nofollow: false } }), config)).toEqual([]);
+  });
+});
+
+describe("soft-404", () => {
+  it("fires on a thin 200 page whose title/H1 reads like a 404", () => {
+    const issues = rule("soft-404").evaluate(
+      makePage({
+        statusCode: 200,
+        title: "Page Not Found",
+        headings: { h1: ["404 - Page Not Found"], h2: [], h3: [] },
+        content: { text: "Sorry, this page could not be found.", wordCount: 6, contentHash: "x" },
+      }),
+      config,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues![0]!.severity).toBe("warning"); // heuristic — never error (MF-5)
+  });
+
+  it("does not fire on a real article that happens to mention 404s (too many words)", () => {
+    const issues = rule("soft-404").evaluate(
+      makePage({
+        statusCode: 200,
+        title: "Debugging 404 Errors — A Complete Guide",
+        headings: { h1: ["Debugging 404 Errors"], h2: [], h3: [] },
+        content: { text: "word ".repeat(300).trim(), wordCount: 300, contentHash: "y" },
+      }),
+      config,
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it("does not fire on a normal thin page with no 404 wording", () => {
+    const issues = rule("soft-404").evaluate(
+      makePage({ statusCode: 200, title: "Contact us", headings: { h1: ["Contact us"], h2: [], h3: [] }, content: { text: "call us", wordCount: 20, contentHash: "z" } }),
+      config,
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it("does not fire on a non-200 status", () => {
+    expect(
+      rule("soft-404").evaluate(
+        makePage({ statusCode: 404, title: "Page Not Found", content: { text: "x", wordCount: 5, contentHash: "w" } }),
+        config,
+      ),
+    ).toEqual([]);
+  });
+});

@@ -32,3 +32,37 @@ export const robotsBlockedRule: SiteRule = {
     }));
   },
 };
+
+/* Kishan's rules.js 'site-no-robots': not an error (everything is crawlable by default absent a
+ * robots.txt) but it's the place to declare a sitemap and keep crawlers out of admin paths. */
+const noUsableMeta: RuleMeta = {
+  id: "no-usable-robots-txt",
+  category: "robots",
+  defaultSeverity: "notice",
+  description: "No usable robots.txt was found (missing, empty, or failed to parse).",
+  howToFix: "Add a robots.txt, even a permissive one, with a Sitemap: line.",
+  dataRequirements: ["robots"],
+};
+
+export const noUsableRobotsTxtRule: SiteRule = {
+  meta: noUsableMeta,
+  evaluate(ctx, config) {
+    if (!isRuleEnabled(noUsableMeta.id, config)) return null;
+    if (!ctx.robots) return null; // pre-feature run — data unavailable, not a pass
+    if (ctx.robots.parseStatus === "ok") return [];
+    const severity = resolvedSeverity(noUsableMeta.id, noUsableMeta.defaultSeverity, config);
+    return [
+      {
+        ruleId: noUsableMeta.id,
+        category: noUsableMeta.category,
+        severity,
+        scope: "site",
+        url: ctx.robots.url,
+        pageId: null,
+        message: `robots.txt: ${ctx.robots.parseStatus}`,
+        howToFix: noUsableMeta.howToFix,
+        evidence: [{ field: "parseStatus", value: ctx.robots.parseStatus }],
+      },
+    ];
+  },
+};

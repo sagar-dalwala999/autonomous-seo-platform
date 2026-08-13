@@ -218,7 +218,7 @@ export function AuthSection({
   );
 }
 
-/** Same visual weight/structure as RobotsSwitch — a designed switch row, never a raw checkbox. */
+/** Same visual weight/structure as SettingSwitch — a designed switch row, never a raw checkbox. */
 function LoginToggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-card px-3 py-2.5">

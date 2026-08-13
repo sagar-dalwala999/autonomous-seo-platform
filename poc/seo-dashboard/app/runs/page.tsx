@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { History } from "lucide-react";
-import { listRuns, getPages, type RunListItem } from "@/lib/data";
+import { listRuns, type RunListItem } from "@/lib/data";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableContainer, TableHead, Th, Tr, Td } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -14,12 +14,6 @@ function formatDuration(startedAt: string, finishedAt: string): string {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
-
-async function maxDepthFor(runId: string): Promise<number | null> {
-  const { items } = await getPages(runId, {});
-  const depths = items.map((p) => p.crawl.depth).filter((d): d is number => d !== null);
-  return depths.length > 0 ? Math.max(...depths) : null;
 }
 
 export default async function RunsPage() {
@@ -40,8 +34,6 @@ export default async function RunsPage() {
     );
   }
 
-  const maxDepths = await Promise.all(runs.map((r) => maxDepthFor(r.runId)));
-
   return (
     <TableContainer>
       <TableHead>
@@ -56,9 +48,8 @@ export default async function RunsPage() {
         <Th>Blocked</Th>
       </TableHead>
       <tbody>
-        {runs.map((run: RunListItem, i: number) => {
+        {runs.map((run: RunListItem) => {
           const href = `/?run=${encodeURIComponent(run.runId)}`;
-          const maxDepth = maxDepths[i];
           return (
             <Tr key={run.runId}>
               <Td className="font-medium text-foreground">
@@ -84,30 +75,57 @@ export default async function RunsPage() {
               </Td>
               <Td>
                 <Link href={href} className="hover:text-foreground hover:underline">
-                  {maxDepth ?? <span className="text-faint">—</span>}
+                  {run.maxDepthSeen ?? <span className="text-faint" title="Run predates depth tracking">—</span>}
                 </Link>
               </Td>
-              <Td>
-                <Link href={href} className="flex w-24 flex-col gap-1 hover:opacity-80">
-                  <span className="text-secondary">{run.coveragePercent.toFixed(1)}%</span>
-                  <CoverageBar percent={run.coveragePercent} />
-                </Link>
-              </Td>
-              <Td>
-                <Link href={href} className="inline-block hover:opacity-80">
-                  <Badge tone="ok">{run.successful}</Badge>
-                </Link>
-              </Td>
-              <Td>
-                <Link href={href} className="inline-block hover:opacity-80">
-                  {run.failed > 0 ? <Badge tone="danger">{run.failed}</Badge> : <span className="text-faint">0</span>}
-                </Link>
-              </Td>
-              <Td>
-                <Link href={href} className="inline-block hover:opacity-80">
-                  {run.blockedByRobots > 0 ? <Badge tone="warn">{run.blockedByRobots}</Badge> : <span className="text-faint">0</span>}
-                </Link>
-              </Td>
+              {run.state === "cancelled" ? (
+                <>
+                  <Td>
+                    <Link href={href} className="inline-flex hover:opacity-80">
+                      <Badge tone="neutral">Cancelled</Badge>
+                    </Link>
+                  </Td>
+                  <Td className="text-faint">
+                    <Link href={href} className="hover:text-foreground hover:underline">
+                      stopped before finishing
+                    </Link>
+                  </Td>
+                  <Td>
+                    <Link href={href} className="inline-block hover:opacity-80">
+                      <Badge tone="ok">{run.successful}</Badge>
+                    </Link>
+                  </Td>
+                  <Td className="text-faint">
+                    <Link href={href} className="hover:text-foreground">
+                      —
+                    </Link>
+                  </Td>
+                </>
+              ) : (
+                <>
+                  <Td>
+                    <Link href={href} className="flex w-24 flex-col gap-1 hover:opacity-80">
+                      <span className="text-secondary">{run.coveragePercent.toFixed(1)}%</span>
+                      <CoverageBar percent={run.coveragePercent} />
+                    </Link>
+                  </Td>
+                  <Td>
+                    <Link href={href} className="inline-block hover:opacity-80">
+                      <Badge tone="ok">{run.successful}</Badge>
+                    </Link>
+                  </Td>
+                  <Td>
+                    <Link href={href} className="inline-block hover:opacity-80">
+                      {run.failed > 0 ? <Badge tone="danger">{run.failed}</Badge> : <span className="text-faint">0</span>}
+                    </Link>
+                  </Td>
+                  <Td>
+                    <Link href={href} className="inline-block hover:opacity-80">
+                      {run.blockedByRobots > 0 ? <Badge tone="warn">{run.blockedByRobots}</Badge> : <span className="text-faint">0</span>}
+                    </Link>
+                  </Td>
+                </>
+              )}
             </Tr>
           );
         })}

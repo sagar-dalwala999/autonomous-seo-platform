@@ -12,9 +12,9 @@ import {
 } from "./metadata";
 import { extractHeadings } from "./headings";
 import { extractLinks } from "./links";
-import { extractImages } from "./images";
+import { extractImageInventory, summarizeImages } from "./images";
 import { extractVideos } from "./media";
-import { extractStructuredData } from "./schema";
+import { extractStructuredData, buildStructuredDataReport } from "./schema";
 import { extractContent } from "./content";
 import { extractSocialTags } from "./social";
 import { extractContacts } from "./contacts";
@@ -26,6 +26,7 @@ import { extractHeadMeta } from "./headMeta";
 import { extractDocumentStructure } from "./structure";
 import { extractFonts } from "./fonts";
 import { extractFaviconCandidates, assessGoogleSerpEligibility, buildFaviconReport } from "./favicons";
+import { extractResourceHints } from "./resourceHints";
 import { resolveBase } from "./shared";
 
 export {
@@ -40,9 +41,29 @@ export {
 } from "./metadata";
 export { extractHeadings } from "./headings";
 export { extractLinks } from "./links";
-export { extractImages } from "./images";
+export {
+  extractImages,
+  extractImageInventory,
+  extractBackgroundImages,
+  parseSrcset,
+  summarizeImages,
+  probeImageAsset,
+  emptyAssetSize,
+  dataUriBytes,
+  collectComputedBackgroundsInPage,
+  mergeComputedBackgroundImages,
+  mergeNetworkObservedImages,
+} from "./images";
+export type { ImageFetcher, ImageProbeOptions, ImageProbeResponse, ImageInventory } from "./images";
 export { extractVideos } from "./media";
-export { extractStructuredData } from "./schema";
+export {
+  extractStructuredData,
+  extractMicrodata,
+  extractRdfa,
+  collectJsonLdItems,
+  validateSchemaNode,
+  buildStructuredDataReport,
+} from "./schema";
 export { extractContent } from "./content";
 export { extractSocialTags } from "./social";
 export { extractContacts } from "./contacts";
@@ -60,6 +81,8 @@ export {
   buildFaviconReport,
   decodeImageDimensions,
 } from "./favicons";
+export { extractResourceHints } from "./resourceHints";
+export { computeReadability, computeKeywordDensity } from "./readability";
 
 /** Runs `fn`, swallowing any error so one broken field can never take down the whole page record. */
 function safe<T>(fn: () => T, fallback: T): T {
@@ -84,6 +107,12 @@ export function extractPage(artifact: FetchArtifact, scope: CrawlScope): Extract
   const title = safe(() => extractTitle($), null);
   const metaDescription = safe(() => extractMetaDescription($), null);
   const content = safe(() => extractContent($), { text: "", wordCount: 0, contentHash: "" });
+  const structuredData = safe(() => extractStructuredData($), []);
+  const imageInventory = safe(() => extractImageInventory($, base), {
+    images: [],
+    backgroundImages: [],
+    summary: summarizeImages([], []),
+  });
 
   return {
     title,
@@ -92,9 +121,12 @@ export function extractPage(artifact: FetchArtifact, scope: CrawlScope): Extract
     robots: safe(() => extractRobotsMeta($, headers), { meta: [], noindex: false, nofollow: false }),
     headings: safe(() => extractHeadings($), { h1: [], h2: [], h3: [] }),
     links: safe(() => extractLinks($, base, artifact.finalUrl, scope), []),
-    images: safe(() => extractImages($, base), []),
+    images: imageInventory.images,
+    backgroundImages: imageInventory.backgroundImages,
+    imageSummary: imageInventory.summary,
     videos: safe(() => extractVideos($, base), []),
-    structuredData: safe(() => extractStructuredData($), []),
+    structuredData,
+    structuredDataReport: safe(() => buildStructuredDataReport($, base, structuredData), undefined),
     content,
     titles: safe(() => extractTitles($), []),
     metaDescriptions: safe(() => extractMetaDescriptions($), []),
@@ -127,6 +159,10 @@ export function extractPage(artifact: FetchArtifact, scope: CrawlScope): Extract
         contentEncoding: headers["content-encoding"] ?? null,
         httpVersion: artifact.httpVersion ?? null,
       }
+    ),
+    resourceHints: safe(
+      () => extractResourceHints($, base),
+      { scripts: [], stylesheets: [], preloads: [], inlineScriptBytesTotal: 0, renderBlockingScriptCount: 0, renderBlockingStylesheetCount: 0 }
     ),
   };
 }

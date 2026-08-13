@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import Link from "next/link";
 import { FileText } from "lucide-react";
 import { resolveRunId, getPage, getPages, rawHtmlPath } from "@/lib/data";
+import { getArtifactStorageStatus } from "@/lib/artifact-status";
 import { buildExplorerRows, findPageIdByUrl } from "@/lib/data-explorer";
 import { readAnalysisReport, findingsForPage } from "@/lib/data-issues";
 import { filterAndSortRows, type ExplorerFilterParams, type SortKey, type StatusBucket } from "@/lib/explorer-shared";
@@ -88,7 +89,7 @@ export default async function PageDetailPage({ params, searchParams }: Props) {
     section: sp.section ?? null,
   };
 
-  const [allRows, { items: allPages }] = await Promise.all([buildExplorerRows(runId), getPages(runId, {})]);
+  const [allRows, allPages] = await Promise.all([buildExplorerRows(runId), getPages(runId)]);
   const filtered = filterAndSortRows(allRows, filterParams).filter((r) => r.pageId !== null);
   const currentIndex = filtered.findIndex((r) => r.pageId === id);
   const parentPageId = page.crawl.parentUrl ? findPageIdByUrl(allPages, page.crawl.parentUrl) : null;
@@ -100,6 +101,7 @@ export default async function PageDetailPage({ params, searchParams }: Props) {
   // staticRawSaved is the crawler's own record that a pre-render snapshot was stored.
   const hasStaticHtml = page.renderDivergence?.staticRawSaved === true;
   const frame = frameability(page.headers, page.url);
+  const artifactStorage = getArtifactStorageStatus();
 
   const analysisReport = await readAnalysisReport(runId);
   const pageIssues = analysisReport ? findingsForPage(analysisReport, page.pageId) : [];
@@ -165,6 +167,8 @@ export default async function PageDetailPage({ params, searchParams }: Props) {
                 canFrameLive={frame.canFrameLive}
                 frameBlockedBy={frame.frameBlockedBy}
                 hasScreenshot={Boolean(page.screenshot?.full)}
+                artifactStorageConfigured={artifactStorage.configured}
+                artifactStorageReason={artifactStorage.reason}
               />
             </div>
           )}

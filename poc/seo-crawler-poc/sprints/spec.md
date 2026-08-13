@@ -4,6 +4,33 @@
 > (operating contract §0 — slices write to disjoint directories instead of worktrees; Main
 > Claude owns all shared/foundation files and is the only integrator).
 
+> **SUPERSEDED IN PART — audited 2026-08-13.** This is the POC-1 slice plan as dispatched and is kept
+> as written. Where the shipped code diverged, the code is right and this document is not. Do not
+> quote a number from here as a fact about the system:
+>
+> - `surface: cli` — it is **mixed**; `brief.md`'s own header says so and a full Next.js dashboard
+>   shipped. ("no git" was true of `poc/` and remains so; the repo root does have a `.git/`.)
+> - Foundation scripts "crawl / test / typecheck / bench" → **8** today, adding `postinstall`,
+>   `analyze`, `diff`, `graph` (`poc/seo-crawler-poc/package.json`).
+> - S8's 6 route skeletons (Overview, Runs, Pages, Failures & Blocked, Sitemap & Robots, page detail)
+>   → **10 pages + 5 API routes** (`find ../seo-dashboard/app -name page.tsx`).
+> - S9's "max pages (default 100, UI cap 300)" → the default 100 is still right; the **cap is now
+>   1,000,000** (`../seo-dashboard/lib/crawl-runner.ts:263`).
+> - S9's "spawns the crawler CLI (`npx tsx src/index.ts …`) **detached**" is wrong on both counts: it
+>   spawns `process.execPath` with `--import tsx`, and is deliberately **NOT** detached — the code
+>   carries the reason ("detached strips the console on win32"). ("last ~30 log lines" is still
+>   accurate — 30 is the default of `tailLog`'s `maxLines` parameter, not a hardcoded value.)
+> - S10/S13's page-detail section list ("every section fully built", 10 numbered) → the jump nav
+>   carries **17** sections (`grep -cE '\{\s*id:\s*"' ../seo-dashboard/components/explorer/section-nav.tsx`).
+> - A4's near-duplicate note "**minhash is Tier 2**, say so in the rule prose" is superseded — MinHash
+>   + LSH shipped in `src/analysis/similarity.ts`, and the rule prose in
+>   `src/analysis/rules/site/duplicates.ts` was updated to state the real method.
+> - A5's `depends_on: A4's issues.json FIXTURE` is stale — A4 landed and real `issues.json` files are
+>   produced end-to-end.
+> - Slices **B (authenticated crawling), C1 (form login), C2 (PageRank)** and the screenshot capture
+>   work are not in this DAG at all; they were dispatched later. Reconstructed entries for them are at
+>   the end of `../WORK_LOG.md`.
+
 ## Foundation (Main Claude, BEFORE fan-out — not a slice)
 
 - `package.json` (deps pinned: crawlee ^3, playwright, cheerio, robots-parser, fast-xml-parser,

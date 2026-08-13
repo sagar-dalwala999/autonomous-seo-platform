@@ -19,8 +19,7 @@ async function loadPreviousRun(previousRunId: string | undefined) {
   if (!previousRunId) return { report: null, pages: null };
   const { report } = await getRun(previousRunId);
   if (!report) return { report: null, pages: null };
-  const { items } = await getPages(previousRunId);
-  return { report, pages: items };
+  return { report, pages: await getPages(previousRunId) };
 }
 
 export default async function OverviewPage({ searchParams }: Props) {
@@ -51,7 +50,7 @@ export default async function OverviewPage({ searchParams }: Props) {
   const currentIndex = runs.findIndex((r) => r.runId === runId);
   const previousRunItem = currentIndex >= 0 ? runs[currentIndex + 1] : undefined;
 
-  const [{ report, blocked, failures }, { items: pages }] = await Promise.all([getRun(runId), getPages(runId)]);
+  const [{ report, blocked, failures }, pages] = await Promise.all([getRun(runId), getPages(runId)]);
 
   if (!report) {
     return (
@@ -74,7 +73,7 @@ export default async function OverviewPage({ searchParams }: Props) {
       <OverviewTopbarActions report={report} />
 
       {/* Run selector now lives in the topbar (components/shell/topbar.tsx) so it's on every data page. */}
-      <FilterChips report={report} runId={runId} />
+      <FilterChips report={report} runId={runId} pages={pages} failureCount={failures.length} blockedCount={blocked.length} />
 
       <ActionCards report={report} runId={runId} />
 

@@ -10,9 +10,10 @@ import { FormField } from "@/components/new-crawl/FormField";
 import { FormSection } from "@/components/new-crawl/FormSection";
 import { RenderModeCards } from "@/components/new-crawl/RenderModeCards";
 import { ScopeCards, type CrawlScope } from "@/components/new-crawl/ScopeCards";
-import { RobotsSwitch } from "@/components/new-crawl/RobotsSwitch";
+import { SettingSwitch } from "@/components/new-crawl/SettingSwitch";
 import { AuthSection, type AuthMethod } from "@/components/new-crawl/AuthSection";
 import { ProgressPanel } from "@/components/new-crawl/ProgressPanel";
+import type { CancelledCrawlStatus } from "@/lib/crawl-control-client";
 import type { CrawlStatusResponse, PanelState, RenderMode } from "@/components/new-crawl/types";
 
 // --max-depth live-verified 2026-08-11 (depth-1 target-site run: 21 pages vs 25, maxDepthSeen 1).
@@ -54,6 +55,8 @@ export default function NewCrawlPage() {
   const [maxDepthInput, setMaxDepthInput] = useState("");
   const [respectRobots, setRespectRobots] = useState(true);
   const [render, setRender] = useState<RenderMode>("auto");
+  // Off by default: --screenshots forces a browser render on every page, not just JS-flagged ones.
+  const [screenshots, setScreenshots] = useState(false);
   const [aliases, setAliases] = useState("");
 
   const [authEnabled, setAuthEnabled] = useState(false);
@@ -109,13 +112,33 @@ export default function NewCrawlPage() {
       if (data.state === "done") {
         setPanelState("done");
         stopPolling();
-      } else if (data.state === "failed") {
-        setPanelState("failed");
+        // This run now has a report.json — the sidebar "Runs" count (read once per layout render,
+        // not re-polled) would otherwise stay stale until the next full nav/reload.
+        router.refresh();
+      } else if (data.state === "cancelled") {
+        setPanelState("cancelled");
         stopPolling();
+        router.refresh();
+      } else if (data.state === "failed") {
+        // Legacy fallback: runs cancelled before `cancelled` became its own CrawlState still have
+        // a status file that literally says `failed` + a note — read that back honestly rather
+        // than as a generic failure, covering cancels completed via a route other than this button.
+        setPanelState(data.note?.toLowerCase().includes("cancelled") ? "cancelled" : "failed");
+        stopPolling();
+        router.refresh();
       }
     } catch {
       // transient network hiccup — next 2s tick retries
     }
+  }
+
+  function handleCancelled(crawl: CancelledCrawlStatus) {
+    stopPolling();
+    setStatus((prev) => (prev ? { ...prev, state: "cancelled", note: crawl.note ?? prev.note, exitCode: crawl.exitCode ?? prev.exitCode } : prev));
+    setPanelState("cancelled");
+    // This run is now visible in Runs history (lib/data.ts's listRuns) — refresh so the sidebar
+    // count reflects it immediately instead of only after the next nav/reload.
+    router.refresh();
   }
 
   /** Mirrors the crawl-runner.ts server-side check — never trust the client alone. */
@@ -199,6 +222,7 @@ export default function NewCrawlPage() {
           maxDepth: MAX_DEPTH_SUPPORTED && maxDepthInput.trim() ? Number(maxDepthInput) : null,
           respectRobots,
           render,
+          screenshots,
           aliases: aliasList,
           auth,
           safety,
@@ -393,7 +417,24 @@ export default function NewCrawlPage() {
                 </p>
               </div>
 
-              <RobotsSwitch checked={respectRobots} onChange={setRespectRobots} disabled={locked} />
+              <SettingSwitch
+                label="Respect robots.txt"
+                checked={respectRobots}
+                onChange={setRespectRobots}
+                onText="On — blocked URLs are recorded, not fetched"
+                offText="Off — robots rules ignored for this crawl"
+                disabled={locked}
+              />
+
+              <SettingSwitch
+                label="Capture screenshots"
+                checked={screenshots}
+                onChange={setScreenshots}
+                onText="On — every page renders in headless Chromium, so the crawl is slower"
+                offText="Off — the Screenshot tab on a page stays disabled for this run"
+                offTone="neutral"
+                disabled={locked}
+              />
             </FormSection>
 
             <FormSection label="Access" className="border-t border-border pt-5">
@@ -469,7 +510,15 @@ export default function NewCrawlPage() {
         </Card>
 
         <Card className="flex flex-col gap-4">
-          <ProgressPanel panelState={panelState} url={url} runId={runId} status={status} onViewRun={viewRun} onRetry={resetForm} />
+          <ProgressPanel
+            panelState={panelState}
+            url={url}
+            runId={runId}
+            status={status}
+            onViewRun={viewRun}
+            onRetry={resetForm}
+            onCancelled={handleCancelled}
+          />
         </Card>
       </div>
     </div>

@@ -34,9 +34,9 @@ export default async function FailuresPage({ searchParams }: Props) {
     return <EmptyState icon={History} title="No crawl runs yet" description="Run a crawl to see failures and blocked URLs here." />;
   }
 
-  const [{ failures, blocked, robots }, { items: pages }, skipped] = await Promise.all([
+  const [{ failures, blocked, robots }, pages, skipped] = await Promise.all([
     getRun(runId),
-    getPages(runId, {}),
+    getPages(runId),
     readSkipped(runId),
   ]);
   const groups = groupFailuresByClass(failures);

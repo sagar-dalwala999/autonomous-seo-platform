@@ -313,6 +313,8 @@ export interface CrawlSummary {
   externalLinks: number;
   orphanCandidates: string[];
   coveragePercent: number;
+  /** Absent on runs written before the crawler started recording it — treat missing as unknown. */
+  maxDepthSeen?: number;
   sitemap: {
     urlsInSitemap: number;
     inSitemapNotCrawled: string[];
@@ -320,30 +322,6 @@ export interface CrawlSummary {
     sitemapEntriesFailed: string[];
   };
   failuresByClass: Record<string, number>;
-}
-
-export interface BenchTargetEntry {
-  name: string;
-  external?: boolean;
-  proves?: string;
-  runId?: string;
-  args?: string[];
-  skipped: boolean;
-  exitCode: number | null;
-  timedOut?: boolean;
-  logFile?: string | null;
-  reportFile?: string | null;
-  reportFound?: boolean;
-  startedAt?: string;
-  finishedAt?: string;
-  skipReason?: string;
-}
-
-/** Shape written by scripts/bench.ts's manifest.json (source of truth: that file). */
-export interface BenchManifest {
-  stamp: string;
-  port: number;
-  targets: BenchTargetEntry[];
 }
 
 /** Additive (A5, mirrors crawler A4's src/models/types.ts "POC-2 analysis contract" exactly).
@@ -369,6 +347,83 @@ export interface Issue {
   threshold?: string;
 }
 
+/** Mirrors crawler's src/analysis/priority/types.ts PriorityFactors — each 0..1. */
+export interface PriorityFactors {
+  severity: number;
+  reach: number;
+  importance: number;
+  confidence: number;
+}
+
+export type FindingStatus = "failing" | "passed" | "skipped-data-unavailable" | "errored" | "muted";
+export type AutomationLevel = "auto-safe" | "auto-with-review" | "human-only";
+export type EffortLevel = "low" | "medium" | "high";
+export type DetectionTier = "observed" | "derived" | "heuristic";
+
+/** Rule-level rollup for one crawl, mirrors crawler's FindingReport field-for-field. The composite
+ *  `priority` (0-100) and its four `priorityFactors` are computed server-side only — never
+ *  re-derived here. */
+export interface FindingReport {
+  ruleId: string;
+  category: string;
+  scope: "page" | "site";
+  severity: IssueSeverity;
+  status: FindingStatus;
+  affectedPages: number;
+  affectedInstances: number;
+  evaluatedPages: number;
+  reach: number | null;
+  importance: number | null;
+  confidence: number | null;
+  priority: number;
+  priorityFactors: PriorityFactors | null;
+  damage: number | null;
+  effort: EffortLevel;
+  effortWhy: string;
+  automation: AutomationLevel;
+  detectionTier: DetectionTier;
+  automationReviewed: boolean;
+  why: string;
+  howToFix: string;
+  sampleUrls: string[];
+  skipReason: string | null;
+  errorNote: string | null;
+  mutedAt: string | null;
+  mutedNote: string | null;
+}
+
+export interface WorstPageEntry {
+  pageId: string;
+  url: string;
+  harm: number;
+  issueCount: number;
+  topRuleIds: string[];
+}
+
+export interface MuteRecord {
+  ruleId: string;
+  note: string | null;
+  mutedBy: string | null;
+  mutedAt: string;
+  expiresAt: string | null;
+}
+
+export interface SkippedRuleDetail {
+  ruleId: string;
+  category: string;
+  scope: "page" | "site";
+  pageCount: number;
+  missing: string[];
+}
+
+export interface RuleErrorDetail {
+  ruleId: string;
+  category: string;
+  scope: "page" | "site";
+  message: string;
+  pageCount: number;
+}
+
 export interface AnalysisReport {
   runId: string;
   generatedAt: string;
@@ -380,4 +435,13 @@ export interface AnalysisReport {
   rulesRun: number;
   rulesSkippedDataUnavailable: string[];
   issues: Issue[];
+  /** Additive priority-slice fields. Optional: runs analyzed before this slice shipped have
+   *  issues.json without them — callers must treat absence as "not available", never as empty. */
+  findings?: FindingReport[];
+  worstPages?: WorstPageEntry[];
+  rulesErrored?: string[];
+  rulesErroredDetail?: RuleErrorDetail[];
+  rulesSkippedDetail?: SkippedRuleDetail[];
+  mutedRuleIds?: string[];
+  graphAvailable?: boolean;
 }

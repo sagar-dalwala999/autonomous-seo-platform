@@ -1,5 +1,38 @@
 # POC-1 Report — SEO Crawler
 
+> **STALENESS BANNER — hand-added 2026-08-13 during a documentation audit. Not produced by
+> `scripts/poc-report.ts`; the next run of that generator will delete this block.**
+>
+> This report was generated on 2026-08-11 and has never been regenerated. It is still an accurate
+> record of *that* bench run, but it no longer describes the current codebase. Specifically:
+>
+> - **Item #18 is reported via a wordCount-proximity proxy and its evidence text says "true
+>   near-dup scoring is POC-2's job". That is now out of date.** Real MinHash + LSH near-duplicate
+>   detection shipped in `src/analysis/similarity.ts` on 2026-08-12 (commit `d87d2e5`, WORK_LOG §C3);
+>   the analyzer scores the seeded pair at ~86% estimated Jaccard against a 0.75 threshold.
+>   Regenerating this report would **not** fix that sentence — the string is hardcoded at
+>   `scripts/evidence-check.ts:429` and describes the *crawler's* stored schema, which genuinely has
+>   no similarity field. Near-duplicate detection is an analyzer (POC-2) capability and is graded by
+>   `scripts/analyzer-gate.ts`, not by this report.
+> - **The embedded seeded-comment manifest is one entry short.** The current
+>   `storage/bench/20260811-110248/evidence.md` (re-run 2026-08-12) additionally lists
+>   `app\members\account\page.tsx:1` — the members area added by the authenticated-crawling slice.
+>   Verified by diffing the live `evidence.md` against the copy inlined below: that one added line is
+>   the *only* difference.
+> - **Crawler capabilities shipped after this report and are not covered by it:** authenticated
+>   crawling + safety guard rails, form login, per-page screenshots, external-link checking,
+>   internal PageRank, and crawl-over-crawl diffing. See `WORK_LOG.md`.
+> - This report covers **POC-1 (crawler) only**. The POC-2 analyzer acceptance result lives in
+>   `storage/bench/20260811-110248/analyzer-gate.md`.
+>
+> **Why it was not regenerated:** `scripts/poc-report.ts` only re-reads
+> `storage/bench/<stamp>/manifest.json` + `evidence.md` and rewrites this file — it does not crawl,
+> so running it is safe. But it would change nothing except the timestamp and that one manifest line,
+> while destroying this banner. Making item #18 correct requires editing `scripts/evidence-check.ts`
+> and re-running the bench, which was out of scope for a documentation-only audit and unsafe to do
+> while sibling agents were changing the analysis code. Regenerate deliberately, from a full
+> `npm run bench` → `evidence-check` → `poc-report` flow, once the code settles.
+
 Generated: 2026-08-11T11:04:53.856Z
 Node: v22.18.0 | Platform: win32
 

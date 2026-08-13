@@ -4,6 +4,7 @@ import {
   duplicateDescriptionRule,
   exactDuplicateContentRule,
   nearDuplicateContentRule,
+  urlVariantDuplicateRule,
 } from "../../../../src/analysis/rules/site/duplicates";
 import { makeConfig, makeContext, makePage } from "./fixtures";
 
@@ -57,6 +58,53 @@ describe("duplicateDescriptionRule", () => {
     const b = makePage({ url: "https://x.test/b", metaDescription: "Two" });
     const issues = duplicateDescriptionRule.evaluate(makeContext({ pages: [a, b] }), makeConfig())!;
     expect(issues).toHaveLength(0);
+  });
+});
+
+describe("urlVariantDuplicateRule", () => {
+  it("fires when the same content is reachable at case/index.html/trailing-slash URL variants", () => {
+    const a = makePage({
+      url: "https://x.test/products/boots",
+      content: { text: "same body", wordCount: 50, contentHash: "hashA" },
+    });
+    const b = makePage({
+      url: "https://x.test/Products/Boots/index.html",
+      content: { text: "same body", wordCount: 50, contentHash: "hashA" },
+    });
+    const issues = urlVariantDuplicateRule.evaluate(makeContext({ pages: [a, b] }), makeConfig())!;
+    expect(issues).toHaveLength(2);
+    expect(issues.every((i) => i.ruleId === "url-variant-duplicate" && i.severity === "warning")).toBe(true);
+  });
+
+  it("does not fire when the variant keys match but the content differs — not proven duplicate", () => {
+    const a = makePage({ url: "https://x.test/a", content: { text: "one", wordCount: 10, contentHash: "hash1" } });
+    const b = makePage({ url: "https://x.test/A/index.html", content: { text: "two", wordCount: 10, contentHash: "hash2" } });
+    const issues = urlVariantDuplicateRule.evaluate(makeContext({ pages: [a, b] }), makeConfig())!;
+    expect(issues).toHaveLength(0);
+  });
+
+  it("does not fire for two unrelated URLs, even with identical content — that's exact-duplicate-content's job", () => {
+    const a = makePage({ url: "https://x.test/a", content: { text: "x", wordCount: 10, contentHash: "same" } });
+    const b = makePage({ url: "https://x.test/completely-different-page", content: { text: "x", wordCount: 10, contentHash: "same" } });
+    const issues = urlVariantDuplicateRule.evaluate(makeContext({ pages: [a, b] }), makeConfig())!;
+    expect(issues).toHaveLength(0);
+  });
+
+  it("does not fire on a 4xx/5xx variant — only live pages count", () => {
+    const a = makePage({ url: "https://x.test/a", content: { text: "x", wordCount: 10, contentHash: "same" } });
+    const b = makePage({ url: "https://x.test/A/", statusCode: 404, content: { text: "x", wordCount: 10, contentHash: "same" } });
+    const issues = urlVariantDuplicateRule.evaluate(makeContext({ pages: [a, b] }), makeConfig())!;
+    expect(issues).toHaveLength(0);
+  });
+
+  it("respects config severity override and enabled=false", () => {
+    const a = makePage({ url: "https://x.test/a", content: { text: "x", wordCount: 10, contentHash: "same" } });
+    const b = makePage({ url: "https://x.test/A/", content: { text: "x", wordCount: 10, contentHash: "same" } });
+    const ctx = makeContext({ pages: [a, b] });
+    const overridden = urlVariantDuplicateRule.evaluate(ctx, makeConfig({ rules: { "url-variant-duplicate": { severity: "error" } } }))!;
+    expect(overridden[0]!.severity).toBe("error");
+    const disabled = urlVariantDuplicateRule.evaluate(ctx, makeConfig({ rules: { "url-variant-duplicate": { enabled: false } } }));
+    expect(disabled).toBeNull();
   });
 });
 

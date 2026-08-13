@@ -6,6 +6,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "./StatusChip";
+import { StopCrawlControl } from "@/components/crawl-control/StopCrawlControl";
+import type { CancelledCrawlStatus } from "@/lib/crawl-control-client";
 import type { CrawlStatusResponse, PanelState } from "./types";
 
 interface Props {
@@ -15,6 +17,7 @@ interface Props {
   status: CrawlStatusResponse | null;
   onViewRun: () => void;
   onRetry: () => void;
+  onCancelled: (crawl: CancelledCrawlStatus) => void;
 }
 
 function formatElapsed(ms: number): string {
@@ -24,23 +27,28 @@ function formatElapsed(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export function ProgressPanel({ panelState, url, runId, status, onViewRun, onRetry }: Props) {
+/**
+ * Owns the elapsed-time tick in isolation, remounted via `key={runId}` from the parent so a new
+ * crawl starts its clock at 0 for free (React's documented reset-via-key pattern) instead of a
+ * setState call inside an effect body reacting to a prop change (react-hooks/set-state-in-effect)
+ * or a ref mutated during render (react-hooks/refs) — both rejected by this project's lint config.
+ */
+function ElapsedClock({ active }: { active: boolean }) {
   const [elapsedMs, setElapsedMs] = useState(0);
   const startRef = useRef<number | null>(null);
-  const logRef = useRef<HTMLPreElement>(null);
 
-  // Ticks while starting/running; freezes at the last value once done/failed; resets on "form".
   useEffect(() => {
-    if (panelState === "starting" || panelState === "running") {
-      if (startRef.current === null) startRef.current = Date.now();
-      const id = setInterval(() => setElapsedMs(Date.now() - (startRef.current ?? Date.now())), 1000);
-      return () => clearInterval(id);
-    }
-    if (panelState === "form") {
-      startRef.current = null;
-      setElapsedMs(0);
-    }
-  }, [panelState]);
+    if (!active) return;
+    if (startRef.current === null) startRef.current = Date.now();
+    const id = setInterval(() => setElapsedMs(Date.now() - (startRef.current ?? Date.now())), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+
+  return <span className="text-xs tabular-nums text-faint">{formatElapsed(elapsedMs)}</span>;
+}
+
+export function ProgressPanel({ panelState, url, runId, status, onViewRun, onRetry, onCancelled }: Props) {
+  const logRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -63,13 +71,14 @@ export function ProgressPanel({ panelState, url, runId, status, onViewRun, onRet
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <StatusChip state={panelState} />
-        <span className="text-xs tabular-nums text-faint">{formatElapsed(elapsedMs)}</span>
+        <ElapsedClock key={runId ?? "unknown"} active={panelState === "running"} />
       </div>
 
       <p className="truncate text-sm font-medium text-foreground">
         {panelState === "running" && `Crawling ${url}`}
         {panelState === "done" && "Crawl complete"}
         {panelState === "failed" && "Crawl failed"}
+        {panelState === "cancelled" && "Crawl cancelled"}
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -79,6 +88,9 @@ export function ProgressPanel({ panelState, url, runId, status, onViewRun, onRet
         )}
       </div>
       {panelState === "failed" && status && <p className="text-xs text-danger">exit code {status.exitCode ?? "unknown"}</p>}
+      {panelState === "cancelled" && status?.note && <p className="text-xs text-secondary">{status.note}</p>}
+
+      {panelState === "running" && runId && <StopCrawlControl runId={runId} onCancelled={onCancelled} className="self-start" />}
 
       <div>
         <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-faint">Log tail</p>
@@ -98,6 +110,11 @@ export function ProgressPanel({ panelState, url, runId, status, onViewRun, onRet
       {panelState === "failed" && (
         <Button variant="outline" onClick={onRetry}>
           Retry
+        </Button>
+      )}
+      {panelState === "cancelled" && (
+        <Button variant="outline" onClick={onRetry}>
+          Start another crawl
         </Button>
       )}
     </div>

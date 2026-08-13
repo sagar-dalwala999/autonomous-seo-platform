@@ -22,7 +22,7 @@ function CrossRefList({
   title: string;
   urls: string[];
   runId: string;
-  pages: Awaited<ReturnType<typeof getPages>>["items"];
+  pages: Awaited<ReturnType<typeof getPages>>;
   tone: "warn" | "danger" | "neutral";
   noLinkLabel: string;
 }) {
@@ -70,7 +70,7 @@ export default async function SitemapPage({ searchParams }: Props) {
   }
 
   const { robots, sitemaps, report } = await getRun(runId);
-  const { items: pages } = await getPages(runId, {});
+  const pages = await getPages(runId);
 
   if (!robots && !sitemaps) {
     return <EmptyState icon={Map} title="No robots/sitemap evidence for this run" />;
