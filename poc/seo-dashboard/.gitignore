@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# QA screenshots are throwaway verification artifacts, not source.
+qa-screenshots/

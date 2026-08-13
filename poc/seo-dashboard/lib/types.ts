@@ -94,6 +94,138 @@ export interface CrawledPage {
   renderSignals: string[];
   fetchedAt: string;
   crawl: CrawlMeta;
+  /** v3 extraction (mirrors the crawler's src/models/types.ts). Optional because older stored runs
+   * predate them — `undefined` means "not captured" and must never render as empty or passing. */
+  renderDivergence?: RenderDivergence | null;
+  headBoundary?: HeadBoundary;
+  charset?: CharsetInfo;
+  baseHref?: BaseHrefInfo;
+  headMeta?: HeadMetaReport;
+  favicons?: FaviconReport;
+  structure?: DocumentStructure;
+  fonts?: FontReport;
+}
+
+export interface RenderDivergence {
+  titleChanged: boolean;
+  metaDescriptionChanged: boolean;
+  canonicalChanged: boolean;
+  noindexChanged: boolean;
+  linkCountDelta: number;
+  wordCountDelta: number;
+  staticRawSaved: boolean;
+  staticCanonical?: string | null;
+  renderedCanonical?: string | null;
+  staticNoindex?: boolean;
+  renderedNoindex?: boolean;
+}
+
+export interface HeadBoundary {
+  elementCount: number;
+  closedBy: string | null;
+  closedAtOffset: number | null;
+  /** `honoured` is PER SIGNAL: Google ignores a body canonical but respects a body meta robots. */
+  stranded: { signal: string; tag: string; honoured: boolean }[];
+}
+
+export interface CharsetInfo {
+  value: string | null;
+  source: "bom" | "header" | "meta" | null;
+  metaOffset: number | null;
+  effective: boolean;
+}
+
+export interface BaseHrefInfo {
+  href: string | null;
+  count: number;
+}
+
+export interface MetaTagRecord {
+  attr: "name" | "property" | "http-equiv" | "itemprop" | "charset";
+  key: string;
+  value: string;
+  index: number;
+  inHead: boolean;
+}
+
+export interface OgImageRecord {
+  url: string;
+  secureUrl?: string;
+  type?: string;
+  width?: number;
+  height?: number;
+  alt?: string;
+}
+
+export interface HeadMetaReport {
+  tags: MetaTagRecord[];
+  /** OG takes the FIRST occurrence; twitter takes the LAST. Keys retain their prefix. */
+  og: Record<string, string>;
+  twitter: Record<string, string>;
+  ogImages: OgImageRecord[];
+  viewport: string | null;
+  /** user-scalable=no or maximum-scale<2 — a WCAG 1.4.4 failure, not a neutral value. */
+  viewportBlocksZoom: boolean;
+  themeColor: string | null;
+  colorScheme: string | null;
+  referrer: string | null;
+  generator: string | null;
+  verification: Record<string, string>;
+}
+
+export interface IconRecord {
+  rel: string;
+  href: string;
+  declaredSizes: string | null;
+  type: string | null;
+  /** Negative = implicit convention (/favicon.ico); any real declaration outranks it. */
+  index: number;
+  source: "link" | "manifest" | "meta" | "implicit";
+  status?: number | null;
+  actualSize?: { width: number; height: number } | null;
+}
+
+export interface FaviconReport {
+  candidates: IconRecord[];
+  effective: string | null;
+  /** null means UNDETERMINED (e.g. robots access unknown), never false. */
+  googleSerpEligible: boolean | null;
+  googleSerpBlockers: string[];
+}
+
+export interface HeadingRecord {
+  level: 1 | 2 | 3 | 4 | 5 | 6;
+  text: string;
+  index: number;
+  inMain: boolean;
+}
+
+export interface DocumentStructure {
+  headings: HeadingRecord[];
+  paragraphs: number;
+  lists: { ordered: number; unordered: number; definition: number };
+  /** th/caption presence separates a real data table from a layout table. */
+  tables: { total: number; withTh: number; withCaption: number };
+  codeBlocks: number;
+  blockquotes: number;
+  landmarks: string[];
+}
+
+export interface FontFaceRecord {
+  family: string;
+  source: string;
+  origin: "same-origin" | "third-party";
+  host: string | null;
+  display: string | null;
+  preloaded: boolean;
+  preloadMissingCrossorigin: boolean;
+}
+
+export interface FontReport {
+  faces: FontFaceRecord[];
+  /** Third-party font hosts are a GDPR exposure, not merely a performance note. */
+  thirdPartyHosts: string[];
+  usedFamilies?: string[];
 }
 
 /** pages/<pageId>.json's filename (sans extension) is the id — not a field on CrawledPage itself. */
