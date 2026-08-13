@@ -169,3 +169,45 @@ export const crawledNotInSitemapRule: SiteRule = {
     return issues;
   },
 };
+
+/** Not a style preference: the sitemap protocol caps a single file at 50,000 URLs. Over that the
+ * file is INVALID and search engines ignore it, so this is a hard failure, not "large". */
+const DEFAULT_SITEMAP_MAX_URLS = 50_000;
+
+const sitemapTooLargeMeta: RuleMeta = {
+  id: "sitemap-too-many-urls",
+  category: "sitemap",
+  defaultSeverity: "error",
+  description:
+    "A sitemap file exceeds the protocol limit of 50,000 URLs. The file is invalid at that point " +
+    "and search engines will not process it.",
+  howToFix: "Split the sitemap into multiple files under the limit and reference them from a sitemap index.",
+  dataRequirements: ["sitemap.files"],
+};
+
+export const sitemapTooManyUrlsRule: SiteRule = {
+  meta: sitemapTooLargeMeta,
+  evaluate(ctx, config) {
+    if (!isRuleEnabled(sitemapTooLargeMeta.id, config)) return null;
+    if (!ctx.sitemap) return null; // no sitemap fetched — data unavailable, not a pass
+    const severity = resolvedSeverity(sitemapTooLargeMeta.id, sitemapTooLargeMeta.defaultSeverity, config);
+    const max = config.thresholds.sitemapMaxUrls ?? DEFAULT_SITEMAP_MAX_URLS;
+    const issues: Issue[] = [];
+    ctx.sitemap.files.forEach((file, index) => {
+      if (file.urlCount <= max) return;
+      issues.push({
+        ruleId: sitemapTooLargeMeta.id,
+        category: sitemapTooLargeMeta.category,
+        severity,
+        scope: "site",
+        url: file.url,
+        pageId: null,
+        message: `Sitemap ${file.url} lists ${file.urlCount} URLs, over the ${max} protocol limit`,
+        howToFix: sitemapTooLargeMeta.howToFix,
+        threshold: `urlCount ${file.urlCount} > max ${max}`,
+        evidence: [{ field: `sitemap.files[${index}].urlCount`, value: file.urlCount }],
+      });
+    });
+    return issues;
+  },
+};

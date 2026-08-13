@@ -4,6 +4,7 @@ import {
   inSitemapNotCrawledRule,
   sitemap404Rule,
   sitemapNoindexIncludedRule,
+  sitemapTooManyUrlsRule,
 } from "../../../../src/analysis/rules/site/sitemap";
 import { makeConfig, makeContext, makeFailure, makePage, makeSitemap } from "./fixtures";
 
@@ -72,5 +73,35 @@ describe("crawledNotInSitemapRule", () => {
     const sitemap = makeSitemap({ entries: [{ url: "https://x.test/about", sourceSitemap: "s.xml" }] });
     const issues = crawledNotInSitemapRule.evaluate(makeContext({ pages: [page], sitemap }), makeConfig())!;
     expect(issues).toHaveLength(0);
+  });
+});
+
+describe("sitemapTooManyUrlsRule", () => {
+  const file = (url: string, urlCount: number) => ({ url, statusCode: 200, kind: "urlset" as const, urlCount, error: null });
+
+  it("fires when a sitemap file exceeds the 50,000 URL protocol limit", () => {
+    const ctx = makeContext({ sitemap: makeSitemap({ files: [file("https://x.test/sitemap.xml", 50_001)] }) });
+    const issues = sitemapTooManyUrlsRule.evaluate(ctx, makeConfig())!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.severity).toBe("error"); // invalid file, not merely a large one
+    expect(issues[0]!.evidence[0]!.field).toBe("sitemap.files[0].urlCount");
+  });
+
+  it("does not fire exactly at the limit", () => {
+    const ctx = makeContext({ sitemap: makeSitemap({ files: [file("https://x.test/sitemap.xml", 50_000)] }) });
+    expect(sitemapTooManyUrlsRule.evaluate(ctx, makeConfig())).toHaveLength(0);
+  });
+
+  it("flags only the oversized file when several are present", () => {
+    const ctx = makeContext({
+      sitemap: makeSitemap({ files: [file("https://x.test/a.xml", 10), file("https://x.test/b.xml", 60_000)] }),
+    });
+    const issues = sitemapTooManyUrlsRule.evaluate(ctx, makeConfig())!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.url).toBe("https://x.test/b.xml");
+  });
+
+  it("returns null (data unavailable) when no sitemap was fetched, rather than passing", () => {
+    expect(sitemapTooManyUrlsRule.evaluate(makeContext({ sitemap: null }), makeConfig())).toBeNull();
   });
 });

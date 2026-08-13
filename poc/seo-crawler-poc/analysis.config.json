@@ -8,9 +8,9 @@
     "descMinChars": "Screaming Frog default 'Meta Description' min length filter (70 chars)",
     "descMaxChars": "Screaming Frog default 'Meta Description' max length filter (155 chars)",
     "descMaxPx": "Screaming Frog default max pixel width for meta description (~985px desktop Google SERP truncation estimate)",
-    "thinContentWords": "POC threshold (brief §6b seeds): chosen to cleanly separate the seeded thin-content fixture (/blog/trail-snacks, 35 words) from normal site copy (100+ words); below common full-suite editorial guidance of 300+ words",
+    "thinContentWords": "POC threshold (brief \u00a76b seeds): chosen to cleanly separate the seeded thin-content fixture (/blog/trail-snacks, 35 words) from normal site copy (100+ words); below common full-suite editorial guidance of 300+ words",
     "lowTextRatio": "General SEO-tooling guidance range for low text-to-HTML ratio (10-25%); no single canonical Screaming Frog figure, documented POC judgment call at the low end",
-    "slowPageMs": "Brief §6b seed default (2000ms); matches commonly-cited informal 'slow page' response-time bucket used by SEO crawlers",
+    "slowPageMs": "Brief \u00a76b seed default (2000ms); matches commonly-cited informal 'slow page' response-time bucket used by SEO crawlers",
     "redirectChainMax": "Screaming Frog 'Redirect Chains' report flags any chain longer than 1 hop",
     "nearDupWordCountDeltaPct": "DEPRECATED (slice C3): superseded by nearDupSimilarity, a real MinHash/Jaccard score. Left as-is, no longer read by near-duplicate-content.",
     "nearDupSimilarity": "slice C3: 5-word-shingle MinHash+LSH estimated Jaccard threshold. 0.75, not the originally-planned 0.9 -- the seeded near-dup fixture pair (/blog/winter-hiking-checklist vs /blog/winter-day-hike-checklist, manifest #18) measures ~0.824 true Jaccard at shingle size 5, so 0.9 would silently miss it; 0.75 leaves margin below that measurement while staying well above the near-zero overlap unrelated same-length pages produce.",
@@ -30,6 +30,11 @@
     "redirectChainMax": 1,
     "nearDupWordCountDeltaPct": 5,
     "nearDupSimilarity": 0.75,
-    "weakInlinkCount": 1
+    "weakInlinkCount": 1,
+    "titleMinPx": 200,
+    "descMinPx": 400,
+    "urlMaxChars": 115,
+    "sitemapMaxUrls": 50000,
+    "sitemapMaxBytes": 52428800
   }
 }

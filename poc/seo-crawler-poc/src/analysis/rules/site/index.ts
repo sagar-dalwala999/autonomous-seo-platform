@@ -3,7 +3,13 @@ export type { SiteRule, SiteRuleContext } from "./types";
 import type { SiteRule } from "./types";
 import { duplicateTitleRule, duplicateDescriptionRule, exactDuplicateContentRule, nearDuplicateContentRule } from "./duplicates";
 import { orphanPageRule } from "./orphans";
-import { sitemap404Rule, sitemapNoindexIncludedRule, inSitemapNotCrawledRule, crawledNotInSitemapRule } from "./sitemap";
+import {
+  sitemap404Rule,
+  sitemapNoindexIncludedRule,
+  inSitemapNotCrawledRule,
+  crawledNotInSitemapRule,
+  sitemapTooManyUrlsRule,
+} from "./sitemap";
 import { robotsBlockedRule } from "./robots";
 import { redirectChainRule, redirectLoopRule } from "./redirects";
 import { weaklyLinkedRule, canonicalTargetValidityRule, brokenInternalLinkRule, authRequiredLinkRule } from "./links";
@@ -21,6 +27,7 @@ export function siteRules(): SiteRule[] {
     sitemapNoindexIncludedRule,
     inSitemapNotCrawledRule,
     crawledNotInSitemapRule,
+    sitemapTooManyUrlsRule,
     robotsBlockedRule,
     redirectChainRule,
     redirectLoopRule,
