@@ -6,6 +6,7 @@ import { httpRules } from "./http";
 import { imageRules } from "./images";
 import { indexabilityRules } from "./indexability";
 import { onPageRules } from "./on-page";
+import { renderDivergenceRules } from "./render-divergence";
 import { securityRules } from "./security";
 import { socialRules } from "./social";
 import { structuredDataRules } from "./structured-data";
@@ -26,5 +27,6 @@ export function pageRules(): PageRule[] {
     ...contentRules(),
     ...httpRules(),
     ...securityRules(),
+    ...renderDivergenceRules(),
   ];
 }

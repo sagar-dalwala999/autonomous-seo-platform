@@ -177,6 +177,12 @@ export interface RenderDivergence {
   wordCountDelta: number;
   /** Static HTML kept as raw/<pageId>.static.html. */
   staticRawSaved: boolean;
+  /* The booleans above cannot tell a JS-deindexed page from a JS "fix" Google never renders —
+   * opposite directions, opposite fixes. Optional: older runs only stored the booleans. */
+  staticCanonical?: string | null;
+  renderedCanonical?: string | null;
+  staticNoindex?: boolean;
+  renderedNoindex?: boolean;
 }
 
 /** mailto:/tel: links — excluded from links[] by design, captured here as contact evidence. */

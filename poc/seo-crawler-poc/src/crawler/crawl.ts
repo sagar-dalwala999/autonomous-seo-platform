@@ -376,6 +376,10 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
       linkCountDelta: renderedExtraction.links.length - staticExtraction.links.length,
       wordCountDelta: renderedExtraction.content.wordCount - staticExtraction.content.wordCount,
       staticRawSaved: true,
+      staticCanonical: staticExtraction.canonical,
+      renderedCanonical: renderedExtraction.canonical,
+      staticNoindex: staticExtraction.robots.noindex,
+      renderedNoindex: renderedExtraction.robots.noindex,
     };
   }
 
