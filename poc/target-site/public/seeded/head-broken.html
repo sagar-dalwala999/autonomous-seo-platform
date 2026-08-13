@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Broken head | Summit Trail Gear</title>
+<meta name="description" content="Seeded fixture: an invalid element closes the head early, stranding the metadata that follows it.">
+<div id="head-breaker">This div is invalid inside head. Per HTML tree construction it implicitly closes head, and Google stops reading metadata here.</div>
+<link rel="canonical" href="https://summittrailgear.example/seeded/head-broken">
+<meta name="robots" content="noindex">
+<link rel="alternate" hreflang="fr" href="https://summittrailgear.example/fr/seeded/head-broken">
+<meta property="og:title" content="Stranded OG title">
+</head>
+<body>
+<header><nav><a href="/">Home</a> <a href="/guides">Guides</a></nav></header>
+<main>
+<article>
+<h1>Head closed early by an invalid element</h1>
+<p>
+This page seeds the head-boundary defect. The canonical, meta robots, hreflang and Open Graph
+tags below the div are present in source but sit outside the effective head. Google stops
+reading at the first invalid element, so the canonical and hreflang are never seen. The meta
+robots tag is the exception: Google explicitly honours robots directives in the body, so a
+correct analyser must not report one blanket verdict for all of them.
+</p>
+<h2>What a correct crawler reports</h2>
+<p>
+headBoundary.closedBy should be div, closedAtOffset should point at that element, and
+stranded[] should carry canonical with honoured false alongside meta-robots with honoured true.
+</p>
+</article>
+</main>
+<footer><p>Seeded fixture &mdash; Summit Trail Gear</p></footer>
+</body>
+</html>
