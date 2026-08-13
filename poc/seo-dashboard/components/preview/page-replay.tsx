@@ -49,6 +49,7 @@ function fmtBytes(n: number): string {
 
 export function PageReplay({ runId, pageId, pageUrl, statusCode, fetchedAt, hasStaticHtml, className }: PageReplayProps) {
   const [variant, setVariant] = useState<ReplayVariant>("rendered");
+  const [styled, setStyled] = useState(true);
   const [state, setState] = useState<"loading" | "loaded" | "error" | "not-found">("loading");
   const [payload, setPayload] = useState<ReplayPayload | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -69,7 +70,7 @@ export function PageReplay({ runId, pageId, pageUrl, statusCode, fetchedAt, hasS
     setPayload(null);
     setErrorMessage(null);
 
-    fetch(`/api/replay/${encodeURIComponent(runId)}/${encodeURIComponent(pageId)}?variant=${variant}`)
+    fetch(`/api/replay/${encodeURIComponent(runId)}/${encodeURIComponent(pageId)}?variant=${variant}${styled ? "&assets=live" : ""}`)
       .then(async (res) => {
         if (seq !== requestSeq.current) return;
         if (res.status === 404) {
@@ -94,7 +95,7 @@ export function PageReplay({ runId, pageId, pageUrl, statusCode, fetchedAt, hasS
   }
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- React's own fetch-on-change pattern (react.dev "Fetching data"): reset before the request, resolve async inside load()
-  useEffect(load, [runId, pageId, variant]);
+  useEffect(load, [runId, pageId, variant, styled]);
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -149,11 +150,39 @@ export function PageReplay({ runId, pageId, pageUrl, statusCode, fetchedAt, hasS
         </div>
       )}
 
+      <div role="tablist" aria-label="Asset loading" className="inline-flex rounded-control border border-border bg-subtle p-0.5 text-xs">
+        {([true, false] as const).map((mode) => (
+          <button
+            key={String(mode)}
+            type="button"
+            role="tab"
+            aria-selected={styled === mode}
+            onClick={() => setStyled(mode)}
+            className={cn(
+              "rounded-[6px] px-2.5 py-1.5 font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary",
+              styled === mode ? "bg-card text-foreground shadow-card" : "text-secondary hover:text-foreground",
+            )}
+          >
+            {mode ? "Styled" : "As captured"}
+          </button>
+        ))}
+      </div>
+
       <div className="flex items-start gap-2 rounded-control border border-border-strong bg-elevated px-3 py-2 text-xs text-secondary">
         <FileWarning size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-faint" aria-hidden="true" />
         <span>
-          HTML as captured — page structure and text are real, but external stylesheets, images, fonts, and scripts are all
-          blocked so nothing is re-fetched from the live site. What you see below is deliberately unstyled.
+          {styled ? (
+            <>
+              Captured HTML, with stylesheets, images and fonts loaded from the live site so the page looks like itself.
+              Scripts never run, and links are inert. Assets come from the site as it is <em>now</em>, so a since-changed
+              page may not look exactly as it did at capture.
+            </>
+          ) : (
+            <>
+              HTML exactly as captured — nothing is fetched from the live site, so the page is deliberately unstyled.
+              Faithful to the snapshot, but asset-heavy pages render as bare boxes.
+            </>
+          )}
         </span>
       </div>
 
@@ -201,7 +230,7 @@ export function PageReplay({ runId, pageId, pageUrl, statusCode, fetchedAt, hasS
       {state === "loaded" && payload && !payload.empty && (
         <div className="overflow-hidden rounded-card border border-border bg-white" style={{ height: "70vh" }}>
           <iframe
-            key={variant}
+            key={`${variant}-${styled}`}
             srcDoc={payload.html}
             sandbox={SANDBOX}
             referrerPolicy="no-referrer"

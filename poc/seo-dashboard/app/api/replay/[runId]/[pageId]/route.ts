@@ -15,9 +15,18 @@ function isSafeId(id: string): boolean {
 // Generous for a single captured page; keeps the blob/srcdoc payload (and this JSON response) sane.
 const MAX_BYTES = 2_000_000;
 
-const REPLAY_CSP =
+/** Offline: nothing loads at all. Faithful to the capture, but an asset-heavy page renders as
+ *  meaningless grey boxes, which is not a preview anyone can read. */
+const CSP_OFFLINE =
   "default-src 'none'; script-src 'none'; style-src 'none'; img-src 'none'; font-src 'none'; " +
   "media-src 'none'; object-src 'none'; frame-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none';";
+
+/** Styled: stylesheets, images and fonts load from the live origin so the page LOOKS like itself.
+ *  script-src stays 'none' — no execution means no exfiltration and no dynamic rewriting, which is
+ *  the property that actually matters. base-uri is omitted because we inject our own <base>. */
+const CSP_STYLED =
+  "default-src 'none'; script-src 'none'; style-src * 'unsafe-inline'; img-src * data: blob:; " +
+  "font-src * data:; media-src *; object-src 'none'; frame-src 'none'; connect-src 'none'; form-action 'none';";
 
 // CSP's fetch directives stop subresource *loads* but not a same-frame link click or a
 // meta-refresh timer navigating the iframe to a live URL — neutralize those two vectors directly.
@@ -32,8 +41,11 @@ function neutralizeNavigation(html: string): string {
 
 // Belt-and-suspenders alongside the iframe's sandbox attribute: this covers absolute-URL
 // subresources even if the captured markup is malformed enough to dodge the head/html fallback.
-function injectCsp(html: string): string {
-  const metaTag = `<meta http-equiv="Content-Security-Policy" content="${REPLAY_CSP}">`;
+/** Relative asset paths only resolve if the frame knows where the page came from. */
+function injectHead(html: string, csp: string, baseHref: string | null): string {
+  const metaTag =
+    `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
+    (baseHref ? `<base href="${baseHref.replace(/"/g, "&quot;")}">` : "");
   if (/<head[^>]*>/i.test(html)) return html.replace(/<head([^>]*)>/i, `<head$1>${metaTag}`);
   if (/<html[^>]*>/i.test(html)) return html.replace(/<html([^>]*)>/i, `<html$1><head>${metaTag}</head>`);
   return `${metaTag}${html}`;
@@ -46,6 +58,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ runI
   }
 
   const variant = req.nextUrl.searchParams.get("variant") === "static" ? "static" : "rendered";
+  const styled = req.nextUrl.searchParams.get("assets") === "live";
   const filename = variant === "static" ? `${pageId}.static.html` : `${pageId}.html`;
   const filePath = path.join(runsDir(), runId, "raw", filename);
 
@@ -72,10 +85,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ runI
   // byteLength that doesn't match what was actually cut.
   const sliced = truncated ? rawBuf.subarray(0, MAX_BYTES).toString("utf8").replace(/�$/, "") : raw;
 
-  const html = injectCsp(neutralizeNavigation(sliced));
+  // Styled mode needs the page's own URL as the resolution base for its relative assets.
+  let baseHref: string | null = null;
+  if (styled) {
+    try {
+      const rec = JSON.parse(await readFile(path.join(runsDir(), runId, "pages", `${pageId}.json`), "utf8"));
+      baseHref = rec.finalUrl ?? rec.url ?? null;
+    } catch {
+      baseHref = null; // no record — fall back to offline behaviour rather than guessing an origin
+    }
+  }
+
+  const html = injectHead(neutralizeNavigation(sliced), styled && baseHref ? CSP_STYLED : CSP_OFFLINE, baseHref);
 
   return Response.json({
     variant,
+    styled: Boolean(styled && baseHref),
+    baseHref,
     html,
     empty: originalByteLength === 0,
     truncated,
