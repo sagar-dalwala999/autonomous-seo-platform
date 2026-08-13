@@ -6,7 +6,7 @@ import { orphanPageRule } from "./orphans";
 import { sitemap404Rule, sitemapNoindexIncludedRule, inSitemapNotCrawledRule, crawledNotInSitemapRule } from "./sitemap";
 import { robotsBlockedRule } from "./robots";
 import { redirectChainRule, redirectLoopRule } from "./redirects";
-import { weaklyLinkedRule, canonicalTargetValidityRule, brokenInternalLinkRule } from "./links";
+import { weaklyLinkedRule, canonicalTargetValidityRule, brokenInternalLinkRule, authRequiredLinkRule } from "./links";
 import { internalLinkSchemeMixRule, internalLinkWwwMixRule } from "./link-consistency";
 import { hreflangReciprocityRule } from "./hreflang";
 
@@ -27,6 +27,7 @@ export function siteRules(): SiteRule[] {
     weaklyLinkedRule,
     canonicalTargetValidityRule,
     brokenInternalLinkRule,
+    authRequiredLinkRule,
     internalLinkSchemeMixRule,
     internalLinkWwwMixRule,
     hreflangReciprocityRule,

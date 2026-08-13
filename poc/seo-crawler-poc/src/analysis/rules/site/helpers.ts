@@ -106,3 +106,20 @@ export function httpFailurePaths(
   }
   return set;
 }
+
+/** 401/403 means "credentials required", not "broken" — an anonymous crawl is SUPPOSED to get
+ * these on a protected area, so they must not be reported as dead links. */
+export const AUTH_REQUIRED_STATUSES = new Set([401, 403]);
+
+/** Failed path -> status code, so callers can tell an auth wall from a dead page. */
+export function httpFailureStatusByPath(
+  failures: { normalizedUrl: string | null; url: string; reason: string; statusCode: number | null }[],
+): Map<string, number | null> {
+  const map = new Map<string, number | null>();
+  for (const f of failures) {
+    if (f.reason !== "http-4xx" && f.reason !== "http-5xx") continue;
+    const p = pathnameOf(f.normalizedUrl ?? f.url);
+    if (p && !map.has(p)) map.set(p, f.statusCode);
+  }
+  return map;
+}

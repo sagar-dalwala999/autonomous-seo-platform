@@ -46,7 +46,9 @@ describe("runAnalysis", () => {
     );
   });
 
-  it("computes healthScore = pages without error-severity issues / analyzed * 100, one decimal", async () => {
+  // Was "pages without error-severity issues / analyzed", which pinned to 0 as soon as one
+  // templated error hit every page. Now check-weighted — see computeHealthScore + its own tests.
+  it("computes healthScore against the checks that ran, not the page count", async () => {
     const dir = await makeRun({
       clean1: makePage({ url: "http://ex.com/1", title: "A perfectly fine title, well within range", statusCode: 200 }),
       clean2: makePage({ url: "http://ex.com/2", title: "Another perfectly fine title, also fine", statusCode: 200 }),
@@ -54,7 +56,11 @@ describe("runAnalysis", () => {
     });
     const report = await runAnalysis(dir, makeConfig());
     expect(report.pagesAnalyzed).toBe(3);
-    expect(report.healthScore).toBeCloseTo(66.7, 1);
+    // One page of three failing a handful of checks must not read as a broadly broken site,
+    // but it must still cost something.
+    expect(report.healthScore).toBeGreaterThan(80);
+    expect(report.healthScore).toBeLessThan(100);
+    expect(report.healthScore).toBe(Math.round(report.healthScore * 10) / 10); // one decimal
     expect(report.issues.some((i) => i.ruleId === "http-error-4xx" && i.url === "http://ex.com/3")).toBe(true);
   });
 

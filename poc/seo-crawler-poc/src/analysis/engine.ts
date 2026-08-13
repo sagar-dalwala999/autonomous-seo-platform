@@ -66,6 +66,61 @@ function compareIssues(a: Issue, b: Issue): number {
   return 0;
 }
 
+/** How much a failing check costs, relative to a check that passes clean. */
+const SEVERITY_PENALTY: Record<IssueSeverity, number> = { error: 1, warning: 0.5, notice: 0.15 };
+
+/**
+ * Check-weighted health score, 0-100.
+ *
+ * The denominator is the number of checks that RAN, not the number of pages — so the score
+ * answers "how much of the rulebook does this site pass", and a 10k-page site is not
+ * automatically worse than a 10-page one. The previous model was
+ * (pages - pagesWithAnyError) / pages, which pinned to 0 the moment one templated error hit
+ * every page; our own acceptance run scored 0 that way and carried no information.
+ *
+ * Breadth enters through sqrt(coverage), which is deliberately concave: fully clearing one
+ * check beats halving two, matching how Semrush documents its own model. A skipped check
+ * (data unavailable) is excluded from both sides rather than counted as a pass.
+ */
+export function computeHealthScore(
+  issues: Issue[],
+  ranRuleIds: Set<string>,
+  skipped: Set<string>,
+  pagesAnalyzed: number,
+  urlToPageId: Map<string, string>,
+): number {
+  const scored = [...ranRuleIds].filter((id) => !skipped.has(id));
+  if (scored.length === 0 || pagesAnalyzed === 0) return 100;
+
+  const affected = new Map<string, Set<string>>();
+  const worst = new Map<string, IssueSeverity>();
+  for (const issue of issues) {
+    if (!scored.includes(issue.ruleId)) continue;
+    const pageId = issue.pageId ?? (issue.url ? urlToPageId.get(issue.url) : undefined);
+    // A finding that resolves to no page still counts as affecting one, so site-scope rules
+    // are never silently free.
+    const key = pageId ?? `__unanchored__:${issue.url ?? issue.ruleId}`;
+    const set = affected.get(issue.ruleId) ?? new Set<string>();
+    set.add(key);
+    affected.set(issue.ruleId, set);
+    const prev = worst.get(issue.ruleId);
+    if (prev === undefined || SEVERITY_ORDER[issue.severity] < SEVERITY_ORDER[prev]) {
+      worst.set(issue.ruleId, issue.severity);
+    }
+  }
+
+  let penalty = 0;
+  for (const ruleId of scored) {
+    const hit = affected.get(ruleId);
+    if (!hit || hit.size === 0) continue; // check passed clean
+    const coverage = Math.min(1, hit.size / pagesAnalyzed);
+    penalty += SEVERITY_PENALTY[worst.get(ruleId) ?? "notice"] * Math.sqrt(coverage);
+  }
+
+  const raw = 100 * (1 - penalty / scored.length);
+  return Math.round(Math.max(0, Math.min(100, raw)) * 10) / 10;
+}
+
 /**
  * Run the full rulebook (page rules + site passes) over a stored run directory and return the
  * assembled report (already persisted via store.writeIssues). Deterministic: same run + same
@@ -88,11 +143,13 @@ export async function runAnalysis(runDir: string, config: AnalysisConfig): Promi
   const issues: Issue[] = [];
   const skipped = new Set<string>();
   let rulesRun = 0;
+  const ranRuleIds = new Set<string>();
 
   const rules = pageRules();
   for (const rule of rules) {
     if (!isRuleEnabled(rule.meta.id, config)) continue;
     rulesRun++;
+    ranRuleIds.add(rule.meta.id);
     for (const { page, pageId } of pageEntries) {
       const result = rule.evaluate(page, config);
       if (result === null) {
@@ -119,6 +176,7 @@ export async function runAnalysis(runDir: string, config: AnalysisConfig): Promi
     for (const rule of siteRuleList) {
       if (!isRuleEnabled(rule.meta.id, config)) continue;
       rulesRun++;
+      ranRuleIds.add(rule.meta.id);
       const result = rule.evaluate(ctx, config);
       if (result === null) {
         skipped.add(rule.meta.id);
@@ -144,14 +202,7 @@ export async function runAnalysis(runDir: string, config: AnalysisConfig): Promi
   for (const issue of issues) counts[issue.severity]++;
 
   const pagesAnalyzed = pageEntries.length;
-  const errorPageIds = new Set(
-    issues
-      .filter((i) => i.severity === "error")
-      .map((i) => i.pageId ?? (i.url ? urlToPageId.get(i.url) : undefined))
-      .filter((id): id is string => id !== undefined && id !== null),
-  );
-  const healthScoreRaw = pagesAnalyzed === 0 ? 100 : ((pagesAnalyzed - errorPageIds.size) / pagesAnalyzed) * 100;
-  const healthScore = Math.round(healthScoreRaw * 10) / 10;
+  const healthScore = computeHealthScore(issues, ranRuleIds, skipped, pagesAnalyzed, urlToPageId);
 
   const report: AnalysisReport = {
     runId: path.basename(runDir),
