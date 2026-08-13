@@ -7,7 +7,6 @@ import { KpiStripView } from "@/components/overview/kpi-strip";
 import { HexMatrix } from "@/components/charts/hex-matrix";
 import { DotMatrixTimeline } from "@/components/charts/dot-matrix-timeline";
 import { WorkQueueTable } from "@/components/overview/work-queue-table";
-import { RunSelector } from "@/components/overview/run-selector";
 import { FilterChips } from "@/components/overview/filter-chips";
 import { OverviewTopbarActions } from "@/components/overview/overview-topbar-actions";
 import { NewCrawlTriggerButton } from "@/components/overview/new-crawl-trigger-button";
@@ -74,10 +73,8 @@ export default async function OverviewPage({ searchParams }: Props) {
     <div className="space-y-6">
       <OverviewTopbarActions report={report} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <RunSelector runs={runs} currentRunId={runId} />
-        <FilterChips report={report} runId={runId} />
-      </div>
+      {/* Run selector now lives in the topbar (components/shell/topbar.tsx) so it's on every data page. */}
+      <FilterChips report={report} runId={runId} />
 
       <ActionCards report={report} runId={runId} />
 

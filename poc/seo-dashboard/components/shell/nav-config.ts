@@ -46,3 +46,11 @@ export const ROUTE_TITLES: { test: (path: string) => boolean; title: string }[] 
 export function titleForPath(pathname: string): string {
   return ROUTE_TITLES.find((r) => r.test(pathname))?.title ?? "SEO Platform";
 }
+
+// Hidden where a single "current run" is meaningless: /new-crawl has no run yet, /runs IS the
+// run list, /compare drives its own base/head pair via RunPairSelector.
+const RUN_SELECTOR_HIDDEN_ON = new Set(["/new-crawl", "/runs", "/compare"]);
+
+export function showRunSelectorFor(pathname: string): boolean {
+  return !RUN_SELECTOR_HIDDEN_ON.has(pathname);
+}

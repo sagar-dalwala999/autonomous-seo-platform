@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Radar } from "lucide-react";
 import { NAV_SECTIONS } from "./nav-config";
 import { SearchInput } from "./search-input";
@@ -17,6 +17,12 @@ interface Props {
 
 export function Sidebar({ runCount, reportPath, onNavigate }: Props) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Forwards the selected run across sections; destination pages fall back to latest on an
+  // absent/invalid ?run= (lib/data.ts resolveRunId), so this is safe to forward as-is.
+  const run = searchParams.get("run");
+  const withRun = (href: string) => (run ? `${href}?run=${encodeURIComponent(run)}` : href);
 
   return (
     <div className="flex h-full flex-col">
@@ -45,7 +51,7 @@ export function Sidebar({ runCount, reportPath, onNavigate }: Props) {
                 return (
                   <li key={item.href}>
                     <Link
-                      href={item.href}
+                      href={withRun(item.href)}
                       onClick={onNavigate}
                       aria-current={active ? "page" : undefined}
                       className={cn(
