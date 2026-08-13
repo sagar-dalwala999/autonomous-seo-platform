@@ -22,6 +22,8 @@ import { extractHreflang } from "./hreflang";
 import { estimateTitlePx, estimateMetaDescriptionPx } from "./pixel-width";
 import { extractPageStats } from "./pageStats";
 import { extractHeadBoundary, extractCharset, extractBaseHrefInfo } from "./head";
+import { extractHeadMeta } from "./headMeta";
+import { extractDocumentStructure } from "./structure";
 import { resolveBase } from "./shared";
 
 export {
@@ -46,6 +48,8 @@ export { extractHreflang } from "./hreflang";
 export { estimateTitlePx, estimateMetaDescriptionPx } from "./pixel-width";
 export { extractPageStats } from "./pageStats";
 export { extractHeadBoundary, extractCharset, extractBaseHrefInfo } from "./head";
+export { extractHeadMeta } from "./headMeta";
+export { extractDocumentStructure } from "./structure";
 
 /** Runs `fn`, swallowing any error so one broken field can never take down the whole page record. */
 function safe<T>(fn: () => T, fallback: T): T {
@@ -96,6 +100,8 @@ export function extractPage(artifact: FetchArtifact, scope: CrawlScope): Extract
     headBoundary: safe(() => extractHeadBoundary($), { elementCount: 0, closedBy: null, closedAtOffset: null, stranded: [] }),
     charset: safe(() => extractCharset($, html, headers), { value: null, source: null, metaOffset: null, effective: false }),
     baseHref: safe(() => extractBaseHrefInfo($), { href: null, count: 0 }),
+    headMeta: safe(() => extractHeadMeta($), undefined),
+    structure: safe(() => extractDocumentStructure($), undefined),
     pageStats: safe(
       () => extractPageStats($, html, content.text, headers, artifact.httpVersion ?? null),
       {
