@@ -6,6 +6,7 @@ import { resolveRunId, getPage, runsDir } from "@/lib/data";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageReplay } from "@/components/preview/page-replay";
+import { frameability } from "@/components/preview/frameability";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -40,6 +41,8 @@ export default async function PagePreviewPage({ params, searchParams }: Props) {
     .then(() => true)
     .catch(() => false);
 
+  const frame = frameability(page.headers);
+
   return (
     <div className="space-y-4 pb-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -64,6 +67,9 @@ export default async function PagePreviewPage({ params, searchParams }: Props) {
         statusCode={page.statusCode}
         fetchedAt={page.fetchedAt}
         hasStaticHtml={hasStaticHtml}
+        canFrameLive={frame.canFrameLive}
+        frameBlockedBy={frame.frameBlockedBy}
+        hasScreenshot={Boolean(page.screenshot?.full)}
       />
     </div>
   );

@@ -21,6 +21,7 @@ import { MediaPanel } from "@/components/explorer/media-panel";
 import { ContentPanel } from "@/components/explorer/collapsible-text";
 import { PageActions } from "@/components/explorer/page-actions";
 import { PageReplay } from "@/components/preview/page-replay";
+import { frameability } from "@/components/preview/frameability";
 import { PageIssuesPanel } from "@/components/issues/page-issues-panel";
 import { SectionNav } from "@/components/explorer/section-nav";
 import { BreadcrumbNav } from "@/components/explorer/breadcrumb-nav";
@@ -98,6 +99,7 @@ export default async function PageDetailPage({ params, searchParams }: Props) {
 
   // staticRawSaved is the crawler's own record that a pre-render snapshot was stored.
   const hasStaticHtml = page.renderDivergence?.staticRawSaved === true;
+  const frame = frameability(page.headers);
 
   const analysisReport = await readAnalysisReport(runId);
   const pageIssues = analysisReport ? findingsForPage(analysisReport, page.pageId) : [];
@@ -160,6 +162,9 @@ export default async function PageDetailPage({ params, searchParams }: Props) {
                 statusCode={page.statusCode}
                 fetchedAt={page.fetchedAt}
                 hasStaticHtml={hasStaticHtml}
+                canFrameLive={frame.canFrameLive}
+                frameBlockedBy={frame.frameBlockedBy}
+                hasScreenshot={Boolean(page.screenshot?.full)}
               />
             </div>
           )}

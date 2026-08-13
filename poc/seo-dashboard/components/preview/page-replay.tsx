@@ -17,6 +17,10 @@ export interface PageReplayProps {
   statusCode: number | null;
   fetchedAt: string;
   hasStaticHtml: boolean;
+  /** From the page's OWN stored response headers — x-frame-options / CSP frame-ancestors. */
+  canFrameLive: boolean;
+  frameBlockedBy: string | null;
+  hasScreenshot: boolean;
   className?: string;
 }
 
@@ -47,9 +51,21 @@ function fmtBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-export function PageReplay({ runId, pageId, pageUrl, statusCode, fetchedAt, hasStaticHtml, className }: PageReplayProps) {
+export function PageReplay({
+  runId,
+  pageId,
+  pageUrl,
+  statusCode,
+  fetchedAt,
+  hasStaticHtml,
+  canFrameLive,
+  frameBlockedBy,
+  hasScreenshot,
+  className,
+}: PageReplayProps) {
   const [variant, setVariant] = useState<ReplayVariant>("rendered");
   const [styled, setStyled] = useState(true);
+  const [mode, setMode] = useState<"live" | "shot" | "replay">(canFrameLive ? "live" : hasScreenshot ? "shot" : "replay");
   const [state, setState] = useState<"loading" | "loaded" | "error" | "not-found">("loading");
   const [payload, setPayload] = useState<ReplayPayload | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -94,8 +110,12 @@ export function PageReplay({ runId, pageId, pageUrl, statusCode, fetchedAt, hasS
       });
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- React's own fetch-on-change pattern (react.dev "Fetching data"): reset before the request, resolve async inside load()
-  useEffect(load, [runId, pageId, variant, styled]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- React's own fetch-on-change pattern (react.dev "Fetching data"): reset before the request, resolve async inside load()
+    if (mode === "replay") load();
+    // Only fetch markup when the replay tab is actually showing; live/screenshot need no payload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load() is stable for these inputs
+  }, [runId, pageId, variant, styled, mode]);
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -121,53 +141,80 @@ export function PageReplay({ runId, pageId, pageUrl, statusCode, fetchedAt, hasS
         </div>
       </div>
 
-      {hasStaticHtml && (
-        <div role="tablist" aria-label="Replay variant" className="inline-flex rounded-control border border-border bg-subtle p-0.5 text-xs">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={variant === "rendered"}
-            onClick={() => setVariant("rendered")}
-            className={cn(
-              "rounded-[6px] px-2.5 py-1.5 font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary",
-              variant === "rendered" ? "bg-card text-foreground shadow-card" : "text-secondary hover:text-foreground",
-            )}
-          >
-            Rendered (post-JS)
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={variant === "static"}
-            onClick={() => setVariant("static")}
-            className={cn(
-              "rounded-[6px] px-2.5 py-1.5 font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary",
-              variant === "static" ? "bg-card text-foreground shadow-card" : "text-secondary hover:text-foreground",
-            )}
-          >
-            Static (pre-JS)
-          </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <div role="tablist" aria-label="Preview mode" className="inline-flex rounded-control border border-border bg-subtle p-0.5 text-xs">
+          {([
+            ["live", "Live page", canFrameLive],
+            ["shot", "Screenshot", hasScreenshot],
+            ["replay", "Captured HTML", true],
+          ] as const).map(([key, label, enabled]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={mode === key}
+              disabled={!enabled}
+              title={
+                enabled
+                  ? undefined
+                  : key === "live"
+                    ? (frameBlockedBy ?? "This site blocks embedding")
+                    : "No screenshot stored for this run — re-crawl with --screenshots"
+              }
+              onClick={() => setMode(key)}
+              className={cn(
+                "rounded-[6px] px-2.5 py-1.5 font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary",
+                mode === key ? "bg-card text-foreground shadow-card" : "text-secondary hover:text-foreground",
+                !enabled && "cursor-not-allowed opacity-40 hover:text-secondary",
+              )}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-      )}
 
-      <div role="tablist" aria-label="Asset loading" className="inline-flex rounded-control border border-border bg-subtle p-0.5 text-xs">
-        {([true, false] as const).map((mode) => (
-          <button
-            key={String(mode)}
-            type="button"
-            role="tab"
-            aria-selected={styled === mode}
-            onClick={() => setStyled(mode)}
-            className={cn(
-              "rounded-[6px] px-2.5 py-1.5 font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary",
-              styled === mode ? "bg-card text-foreground shadow-card" : "text-secondary hover:text-foreground",
-            )}
-          >
-            {mode ? "Styled" : "As captured"}
-          </button>
-        ))}
+        {mode === "replay" && hasStaticHtml && (
+          <div role="tablist" aria-label="Replay variant" className="inline-flex rounded-control border border-border bg-subtle p-0.5 text-xs">
+            {([["rendered", "Rendered (post-JS)"], ["static", "Static (pre-JS)"]] as const).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={variant === key}
+                onClick={() => setVariant(key)}
+                className={cn(
+                  "rounded-[6px] px-2.5 py-1.5 font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary",
+                  variant === key ? "bg-card text-foreground shadow-card" : "text-secondary hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {mode === "replay" && (
+          <div role="tablist" aria-label="Asset loading" className="inline-flex rounded-control border border-border bg-subtle p-0.5 text-xs">
+            {([true, false] as const).map((on) => (
+              <button
+                key={String(on)}
+                type="button"
+                role="tab"
+                aria-selected={styled === on}
+                onClick={() => setStyled(on)}
+                className={cn(
+                  "rounded-[6px] px-2.5 py-1.5 font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary",
+                  styled === on ? "bg-card text-foreground shadow-card" : "text-secondary hover:text-foreground",
+                )}
+              >
+                {on ? "Styled" : "As captured"}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
+      {mode === "replay" && (
       <div className="flex items-start gap-2 rounded-control border border-border-strong bg-elevated px-3 py-2 text-xs text-secondary">
         <FileWarning size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-faint" aria-hidden="true" />
         <span>
@@ -185,8 +232,50 @@ export function PageReplay({ runId, pageId, pageUrl, statusCode, fetchedAt, hasS
           )}
         </span>
       </div>
+      )}
 
-      {payload?.truncated && (
+      {mode === "live" && (
+        <>
+          <div className="flex items-start gap-2 rounded-control border border-border-strong bg-elevated px-3 py-2 text-xs text-secondary">
+            <FileWarning size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-faint" aria-hidden="true" />
+            <span>
+              The live site, embedded now — not the crawl snapshot. It reflects the page as it is today, so it can differ
+              from what was captured on {capturedLabel}.
+            </span>
+          </div>
+          <div className="overflow-hidden rounded-card border border-border bg-white" style={{ height: "70vh" }}>
+            <iframe
+              src={pageUrl}
+              referrerPolicy="no-referrer"
+              sandbox="allow-scripts allow-same-origin"
+              title={`Live page: ${pageUrl}`}
+              className="h-full w-full"
+            />
+          </div>
+        </>
+      )}
+
+      {mode === "shot" && (
+        <>
+          <div className="flex items-start gap-2 rounded-control border border-border-strong bg-elevated px-3 py-2 text-xs text-secondary">
+            <FileWarning size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-faint" aria-hidden="true" />
+            <span>
+              Full-page screenshot taken during the crawl, with JavaScript executed — this is exactly what the crawler saw
+              at {capturedLabel}.
+            </span>
+          </div>
+          <div className="overflow-auto rounded-card border border-border bg-white" style={{ maxHeight: "70vh" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- a stored WebP served by our own route, not a Next-optimisable asset */}
+            <img
+              src={`/api/screenshot/${encodeURIComponent(runId)}/${encodeURIComponent(pageId)}?size=full`}
+              alt={`Screenshot of ${pageUrl} captured during the crawl`}
+              className="w-full"
+            />
+          </div>
+        </>
+      )}
+
+      {mode === "replay" && payload?.truncated && (
         <div className="flex items-start gap-2 rounded-control border border-warn/30 bg-warn-bg px-3 py-2 text-xs text-warn">
           <AlertTriangle size={14} strokeWidth={1.75} className="mt-0.5 shrink-0" aria-hidden="true" />
           <span>
@@ -195,9 +284,9 @@ export function PageReplay({ runId, pageId, pageUrl, statusCode, fetchedAt, hasS
         </div>
       )}
 
-      {state === "loading" && <Skeleton className="h-[70vh] w-full" />}
+      {mode === "replay" && state === "loading" && <Skeleton className="h-[70vh] w-full" />}
 
-      {state === "error" && (
+      {mode === "replay" && state === "error" && (
         <EmptyState
           icon={AlertTriangle}
           title="Couldn't load the replay"
@@ -215,7 +304,7 @@ export function PageReplay({ runId, pageId, pageUrl, statusCode, fetchedAt, hasS
         />
       )}
 
-      {state === "not-found" && (
+      {mode === "replay" && state === "not-found" && (
         <EmptyState
           icon={FileWarning}
           title={`No stored HTML for this page (${variant === "static" ? "static pre-JS" : "rendered"} variant)`}
@@ -223,11 +312,11 @@ export function PageReplay({ runId, pageId, pageUrl, statusCode, fetchedAt, hasS
         />
       )}
 
-      {state === "loaded" && payload?.empty && (
+      {mode === "replay" && state === "loaded" && payload?.empty && (
         <EmptyState icon={FileWarning} title="Captured file is empty" description="The crawler stored a 0-byte file for this page/variant." />
       )}
 
-      {state === "loaded" && payload && !payload.empty && (
+      {mode === "replay" && state === "loaded" && payload && !payload.empty && (
         <div className="overflow-hidden rounded-card border border-border bg-white" style={{ height: "70vh" }}>
           <iframe
             key={`${variant}-${styled}`}

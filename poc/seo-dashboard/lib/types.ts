@@ -97,6 +97,8 @@ export interface CrawledPage {
   /** v3 extraction (mirrors the crawler's src/models/types.ts). Optional because older stored runs
    * predate them — `undefined` means "not captured" and must never render as empty or passing. */
   renderDivergence?: RenderDivergence | null;
+  /** undefined = crawled without --screenshots; null = attempted and failed; object = captured. */
+  screenshot?: { thumb: string; full: string; capturedAt: string } | null;
   headBoundary?: HeadBoundary;
   charset?: CharsetInfo;
   baseHref?: BaseHrefInfo;
