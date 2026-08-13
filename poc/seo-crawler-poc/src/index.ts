@@ -17,6 +17,9 @@ Options:
   --concurrency N      Max concurrent requests (default: 5)
   --no-robots          Ignore robots.txt (evidence is still recorded; enforcement is skipped)
   --render MODE         auto | never | always (default: auto)
+  --screenshots         Capture a thumb + full-page WebP screenshot per page (default: off).
+                         Forces browser rendering for pages that would otherwise stay static —
+                         a screenshot needs a browser. Never fails the crawl on capture errors.
   --out DIR            Output directory for run evidence (default: storage)
   --alias host[,host]  Extra hostnames treated as this site (e.g. staging-domain crawls)
   --rps N               Requests/sec cap (default: 10 for localhost/127.*, 2 otherwise)
@@ -77,6 +80,7 @@ async function main(): Promise<void> {
       concurrency: { type: "string" },
       "no-robots": { type: "boolean" },
       render: { type: "string" },
+      screenshots: { type: "boolean" },
       out: { type: "string" },
       alias: { type: "string" },
       rps: { type: "string" },
@@ -228,6 +232,7 @@ async function main(): Promise<void> {
     concurrency,
     respectRobots: !values["no-robots"],
     render,
+    screenshots: values.screenshots === true,
     outDir: values.out ?? "storage",
     runId,
     userAgent: "seo-crawler-poc/0.1 (+poc; respectful)",
@@ -253,7 +258,7 @@ async function main(): Promise<void> {
             : "none";
 
   console.log(`Crawl started: ${options.startUrl}`);
-  console.log(`  run-id: ${options.runId} | render: ${options.render} | robots: ${options.respectRobots} | max-pages: ${options.maxPages === Number.MAX_SAFE_INTEGER ? "all" : options.maxPages} | max-depth: ${options.maxDepth ?? "unlimited"} | check-external: ${checkExternal} | auth: ${authLabel}`);
+  console.log(`  run-id: ${options.runId} | render: ${options.render} | screenshots: ${options.screenshots === true} | robots: ${options.respectRobots} | max-pages: ${options.maxPages === Number.MAX_SAFE_INTEGER ? "all" : options.maxPages} | max-depth: ${options.maxDepth ?? "unlimited"} | check-external: ${checkExternal} | auth: ${authLabel}`);
 
   try {
     const summary = await runCrawl(options, checkExternal);

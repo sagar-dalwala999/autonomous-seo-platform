@@ -69,4 +69,24 @@ describe("RunStore", () => {
     );
     expect(JSON.parse(reportRaw)).toEqual(summary);
   });
+
+  it("saveScreenshots writes thumb+full WebP named by pageId and returns forward-slashed relative paths", async () => {
+    const store = new RunStore(outDir, "run-1");
+    await store.init();
+
+    const url = "https://ex.com/screenshots-me";
+    const thumbBuf = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]);
+    const fullBuf = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x11, 0x11, 0x11, 0x11, 0x57, 0x45, 0x42, 0x50]);
+
+    const paths = await store.saveScreenshots(url, thumbBuf, fullBuf);
+    const id = RunStore.pageIdFor(url);
+
+    expect(paths).toEqual({ thumb: `screenshots/${id}.thumb.webp`, full: `screenshots/${id}.full.webp` });
+    expect(paths.thumb).not.toContain("\\");
+    expect(paths.full).not.toContain("\\");
+
+    const { readFile } = await import("node:fs/promises");
+    await expect(readFile(path.join(store.runDir, "screenshots", `${id}.thumb.webp`))).resolves.toEqual(thumbBuf);
+    await expect(readFile(path.join(store.runDir, "screenshots", `${id}.full.webp`))).resolves.toEqual(fullBuf);
+  });
 });

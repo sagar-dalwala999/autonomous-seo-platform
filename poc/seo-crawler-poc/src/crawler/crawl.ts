@@ -1,7 +1,7 @@
 /** Slice S4 implements. */
 import { Configuration, CheerioCrawler, PlaywrightCrawler, RequestQueue } from "crawlee";
 import { chromium } from "playwright";
-import type { Request as PlaywrightRequest } from "playwright";
+import type { BrowserContext, Page, Request as PlaywrightRequest } from "playwright";
 import type {
   CrawlAuth,
   CrawlOptions,
@@ -53,6 +53,16 @@ const RENDER_SETTLE_TICK_MS = 1000;
 const EXTERNAL_CHECK_CAP = 50;
 const EXTERNAL_CHECK_RPS = 2;
 const EXTERNAL_CHECK_TIMEOUT_MS = 10_000;
+/** Thumbnail viewport (CSS px) + device scale factor 0.25 → ~342x192 raster output, no
+ * post-resize step needed. Set at browser-context creation (see captureScreenshot). */
+const THUMB_VIEWPORT = { width: 1368, height: 768 };
+const THUMB_DEVICE_SCALE_FACTOR = 0.25;
+const THUMB_QUALITY = 75;
+const FULL_SCREENSHOT_QUALITY = 80;
+const SCREENSHOT_TIMEOUT_MS = 10_000;
+/** The thumb re-loads the page from scratch, so it needs the same patience the main pass gets. */
+const THUMB_LOAD_TIMEOUT_MS = 30_000;
+const THUMB_SETTLE_MAX_MS = 12_000;
 
 /**
  * Auth step 2 (C1): runs the browser-driven login ONCE, before the crawl loop, and folds the
@@ -306,12 +316,16 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
     renderedWith: "http" | "playwright";
     renderSignals: string[];
     renderDivergence?: RenderDivergence | null;
+    screenshot?: { thumb: string; full: string; capturedAt: string } | null;
   }): CrawledPage {
     const meta = discovery.get(params.normalizedUrl);
     return {
       ...params.extraction,
       // null = never escalated or no static baseline to diff; set by the PW pass otherwise.
       renderDivergence: params.renderDivergence ?? null,
+      // undefined = --screenshots wasn't requested for this page (kept out of buildCrawledPage's
+      // params entirely below); never coerced to null so the "not attempted" case stays honest.
+      screenshot: params.screenshot,
       runId: options.runId,
       url: params.normalizedUrl,
       normalizedUrl: params.normalizedUrl,
@@ -381,6 +395,71 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
       staticNoindex: staticExtraction.robots.noindex,
       renderedNoindex: renderedExtraction.robots.noindex,
     };
+  }
+
+  /**
+   * --screenshots: full-page + thumbnail WebP. MUST run after any scroll — scrolling to trigger
+   * lazy content freezes LCP, so if a future pass ever reads Core Web Vitals on this same page
+   * visit the order must stay vitals -> scroll -> screenshot. Never throws — a failed capture
+   * must not fail the page's crawl record.
+   *
+   * deviceScaleFactor is fixed at browser-context creation and Playwright's own screenshot sizing
+   * ignores a live CDP Emulation override (verified: it captures at the context's real DSF
+   * regardless) — so the only way to get a genuinely downscaled thumb is a second, disposable
+   * low-DSF context. That means one extra page load per screenshotted page, outside Crawlee's own
+   * rps throttle — an accepted cost for a POC evidence feature, not a production crawl path.
+   */
+  /** Nudge reveal-on-scroll animations, then wait for the visible text to stop growing. */
+  async function settleForThumb(p: Page): Promise<void> {
+    await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
+    const started = Date.now();
+    let last = -1;
+    let stable = 0;
+    while (Date.now() - started < THUMB_SETTLE_MAX_MS) {
+      await p.waitForTimeout(RENDER_SETTLE_TICK_MS);
+      const size = await p.evaluate(() => document.body.innerText.length).catch(() => -1);
+      if (size === last && size > 0 && ++stable >= 2) break;
+      if (size !== last) stable = 0;
+      last = size;
+    }
+    // Back to the top: the thumbnail should show the hero, not wherever the scroll ended up.
+    await p.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+    await p.waitForTimeout(RENDER_SETTLE_TICK_MS);
+  }
+
+  async function captureScreenshot(
+    page: Page,
+    normalizedUrl: string,
+    finalUrl: string,
+  ): Promise<{ thumb: string; full: string; capturedAt: string } | null> {
+    let thumbContext: BrowserContext | null = null;
+    try {
+      const full = await page.screenshot({
+        type: "webp",
+        quality: FULL_SCREENSHOT_QUALITY,
+        fullPage: true,
+        timeout: SCREENSHOT_TIMEOUT_MS,
+      });
+
+      const browser = page.context().browser();
+      if (!browser) throw new Error("no Browser handle on this page's context");
+      thumbContext = await browser.newContext({ viewport: THUMB_VIEWPORT, deviceScaleFactor: THUMB_DEVICE_SCALE_FACTOR });
+      if (hasAuth) await thumbContext.setExtraHTTPHeaders(authHdrs);
+      const thumbPage = await thumbContext.newPage();
+      await thumbPage.goto(finalUrl, { waitUntil: "load", timeout: THUMB_LOAD_TIMEOUT_MS });
+      // This is a FRESH load, so it has none of the settling the main pass already did. Screenshot
+      // at "load" and a reveal-on-scroll site (GSAP/AOS) is still at opacity:0 — captured black.
+      await settleForThumb(thumbPage);
+      const thumb = await thumbPage.screenshot({ type: "webp", quality: THUMB_QUALITY, timeout: SCREENSHOT_TIMEOUT_MS });
+
+      const paths = await store.saveScreenshots(normalizedUrl, thumb, full);
+      return { ...paths, capturedAt: new Date().toISOString() };
+    } catch (err) {
+      console.warn(`[screenshot] capture failed for ${normalizedUrl}: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    } finally {
+      await thumbContext?.close().catch(() => {});
+    }
   }
 
   /** Playwright natively tracks each redirect hop's real response — no extra fetch needed. */
@@ -460,10 +539,13 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
 
           // Hard 4xx/5xx shells (Next.js 404s are tiny + bundle-heavy) match the CSR-shell shape
           // but re-rendering an error page cannot enrich evidence — only 2xx pages escalate.
-          if (toRenderCollector && options.render === "auto" && statusCode < 400) {
-            const decision = needsJsRendering(html, extraction, scope);
-            if (decision.needed) {
-              toRenderCollector.set(normalizedUrl, { signals: decision.signals, staticHtml: html, staticExtraction: extraction });
+          if (toRenderCollector && statusCode < 400) {
+            const decision = options.render === "auto" ? needsJsRendering(html, extraction, scope) : null;
+            // --screenshots needs a browser on every page, not just JS-flagged ones — force
+            // escalation for whatever the JS heuristic (if any) would have left on the static pass.
+            if (decision?.needed || options.screenshots) {
+              const signals = decision?.needed ? decision.signals : ["screenshots:forced"];
+              toRenderCollector.set(normalizedUrl, { signals, staticHtml: html, staticExtraction: extraction });
             }
           }
 
@@ -608,8 +690,10 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
             if (hasAuth) await page.setExtraHTTPHeaders(authHdrs);
             await page.route("**/*", (route) => {
               const type = route.request().resourceType();
-              if (type === "font") return options.loadFonts ? route.continue() : route.abort();
-              if (type === "image" || type === "media") return route.abort();
+              // A screenshot with no images/real fonts isn't a "real visual preview" — the whole
+              // point of this flag — so --screenshots pays for both, same opt-in shape as loadFonts.
+              if (type === "font") return options.loadFonts || options.screenshots ? route.continue() : route.abort();
+              if (type === "image" || type === "media") return options.screenshots ? route.continue() : route.abort();
               return route.continue();
             });
           },
@@ -646,6 +730,10 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
             }
           }
           await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+          // Ordering constraint: scroll (above) happens BEFORE screenshot (below) because scrolling
+          // freezes LCP — if Core Web Vitals are ever read on this same visit, the required order
+          // is vitals -> scroll -> screenshot, never screenshot before vitals settle.
+          const screenshot = options.screenshots ? await captureScreenshot(page, normalizedUrl, page.url()) : undefined;
           const html = await page.content();
           const finalUrl = page.url();
           const statusCode = response ? response.status() : null;
@@ -682,6 +770,7 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
             renderedWith: "playwright",
             renderSignals: signals,
             renderDivergence,
+            screenshot,
           });
 
           await store.saveRaw(normalizedUrl, html);
@@ -745,12 +834,13 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
     await crawler.run(seed);
   }
 
-  if (options.render === "never") {
+  if (options.render === "never" && !options.screenshots) {
     await runCheerioPass(initialSeed, options.maxPages, null);
   } else if (options.render === "always") {
     await runPlaywrightOnlyPass(initialSeed, options.maxPages);
   } else {
-    // auto: alternate static pass ↔ escalation pass until the frontier is empty or budget runs out.
+    // auto (default), or --render never + --screenshots forcing every page through escalation:
+    // alternate static pass ↔ escalation pass until the frontier is empty or budget runs out.
     let pendingSeed = initialSeed;
     while (pendingSeed.length > 0 && processedUrls.size < options.maxPages) {
       const toRenderThisPass = new Map<string, EscalationCandidate>();

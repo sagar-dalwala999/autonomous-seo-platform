@@ -59,6 +59,19 @@ export class RunStore {
     await writeFile(path.join(dir, `${RunStore.pageIdFor(normalizedUrl)}.static.html`), html, "utf8");
   }
 
+  /** --screenshots: thumb + full-page WebP, named by pageId like raw/<pageId>.html. Returns
+   * paths relative to the run dir (forward-slashed, for direct use as URL/JSON evidence). */
+  async saveScreenshots(normalizedUrl: string, thumb: Buffer, full: Buffer): Promise<{ thumb: string; full: string }> {
+    const dir = path.join(this._runDir, "screenshots");
+    await mkdir(dir, { recursive: true });
+    const id = RunStore.pageIdFor(normalizedUrl);
+    const thumbRel = path.join("screenshots", `${id}.thumb.webp`);
+    const fullRel = path.join("screenshots", `${id}.full.webp`);
+    await writeFile(path.join(this._runDir, thumbRel), thumb);
+    await writeFile(path.join(this._runDir, fullRel), full);
+    return { thumb: thumbRel.split(path.sep).join("/"), full: fullRel.split(path.sep).join("/") };
+  }
+
   /** Read-modify-write, chained per instance so parallel handler calls never race the file. */
   saveFailure(failure: FailureRecord): Promise<void> {
     const run = async (): Promise<void> => {

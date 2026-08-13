@@ -89,6 +89,9 @@ export interface CrawlOptions {
   /** Let fonts load in the browser pass. Off by default — fonts are the single heaviest
    * blocked resource class, so only pay for them when font extraction actually runs. */
   loadFonts?: boolean;
+  /** Capture a thumb+full screenshot per page. Off by default; forces pages that would
+   * otherwise be static-only onto the Playwright pass, since a screenshot needs a browser. */
+  screenshots?: boolean;
 }
 
 export interface Redirect {
@@ -435,6 +438,9 @@ export interface CrawledPage extends ExtractionResult {
   renderSignals: string[];
   /** Raw-vs-rendered diff; null when never escalated; undefined on pre-v2 records. */
   renderDivergence?: RenderDivergence | null;
+  /** --screenshots evidence. undefined = flag off (or pre-screenshot run); null = flag on but
+   * capture failed for this page; object = success, paths relative to the run dir. */
+  screenshot?: { thumb: string; full: string; capturedAt: string } | null;
   fetchedAt: string;
   crawl: CrawlMeta;
 }
