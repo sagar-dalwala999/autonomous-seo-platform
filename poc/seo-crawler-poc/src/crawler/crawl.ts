@@ -604,7 +604,8 @@ export async function runCrawl(options: CrawlOptions, checkExternal = false): Pr
             if (hasAuth) await page.setExtraHTTPHeaders(authHdrs);
             await page.route("**/*", (route) => {
               const type = route.request().resourceType();
-              if (type === "image" || type === "font" || type === "media") return route.abort();
+              if (type === "font") return options.loadFonts ? route.continue() : route.abort();
+              if (type === "image" || type === "media") return route.abort();
               return route.continue();
             });
           },

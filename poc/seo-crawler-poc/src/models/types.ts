@@ -86,6 +86,9 @@ export interface CrawlOptions {
   auth?: CrawlAuth | null;
   /** Guard rails; defaults derived from whether auth is present (see CrawlSafety). */
   safety?: CrawlSafety;
+  /** Let fonts load in the browser pass. Off by default — fonts are the single heaviest
+   * blocked resource class, so only pay for them when font extraction actually runs. */
+  loadFonts?: boolean;
 }
 
 export interface Redirect {
@@ -213,6 +216,12 @@ export interface PageContent {
   wordCount: number;
   /** sha256 hex of whitespace-normalized lowercased text — near-duplicate evidence. */
   contentHash: string;
+  /** How the content area was located — provenance, so a rule can tell "no main content"
+   * from "we fell back to body". v3-optional. */
+  contentAreaMethod?: "main" | "article" | "role-main" | "body-minus-chrome";
+  /** Words inside [aria-hidden="true"]. Counted in `text` (Google indexes them) but tracked
+   * separately because they're hidden from assistive tech — an a11y finding, not an SEO one. */
+  ariaHiddenWordCount?: number;
 }
 
 export interface CrawlMeta {
@@ -235,6 +244,136 @@ export interface FetchArtifact {
   responseTimeMs: number | null;
   /** "1.1" | "2.0" etc. when observable; null otherwise (v2). */
   httpVersion?: string | null;
+}
+
+/* ── v3 extraction contract (extraction-completeness R&D §6). All additive + optional. ── */
+
+/** Where the <head> effectively ended. Per HTML tree construction ANY invalid element
+ * (div, img, noscript>img …) implicitly closes head, and Google "stops reading any further
+ * elements" — so a canonical after that point is present in source but invisible to Google. */
+export interface HeadBoundary {
+  elementCount: number;
+  /** Tag name of the element that implicitly closed head; null when head closed properly. */
+  closedBy: string | null;
+  closedAtOffset: number | null;
+  /** Signals found after the effective head end. `honoured` is PER SIGNAL — Google ignores a
+   * body canonical but explicitly respects a body meta robots. Never collapse to one verdict. */
+  stranded: { signal: string; tag: string; honoured: boolean }[];
+}
+
+export interface CharsetInfo {
+  value: string | null;
+  source: "bom" | "header" | "meta" | null;
+  /** Byte offset of <meta charset>. Must serialize within the first 1024 bytes to take effect. */
+  metaOffset: number | null;
+  effective: boolean;
+}
+
+/** <base href> silently rewrites every relative canonical/hreflang/icon/preload on the page.
+ * All but the first are ignored per spec; OG tags do not respect it at all. */
+export interface BaseHrefInfo {
+  href: string | null;
+  count: number;
+}
+
+export interface MetaTagRecord {
+  /** twitter:* is valid on BOTH name and property — key on the token, record the attribute. */
+  attr: "name" | "property" | "http-equiv" | "itemprop" | "charset";
+  key: string;
+  value: string;
+  /** Document order. Load-bearing: OG structured sub-properties bind to the preceding root. */
+  index: number;
+  inHead: boolean;
+}
+
+export interface OgImageRecord {
+  url: string;
+  secureUrl?: string;
+  type?: string;
+  width?: number;
+  height?: number;
+  alt?: string;
+}
+
+/** Ordered-stream model. A flat {property → value} map is incorrect by construction for OG. */
+export interface HeadMetaReport {
+  tags: MetaTagRecord[];
+  /** OG conflict rule: FIRST occurrence wins. */
+  og: Record<string, string>;
+  /** Twitter conflict rule: LAST occurrence wins (X's documented behaviour — inverted from OG). */
+  twitter: Record<string, string>;
+  ogImages: OgImageRecord[];
+  viewport: string | null;
+  /** viewport with user-scalable=no / maximum-scale<2 — a WCAG 1.4.4 failure. */
+  viewportBlocksZoom: boolean;
+  themeColor: string | null;
+  colorScheme: string | null;
+  referrer: string | null;
+  generator: string | null;
+  /** Site-verification tokens keyed by provider (google, bing, pinterest, facebook …). */
+  verification: Record<string, string>;
+}
+
+export interface IconRecord {
+  rel: string;
+  href: string;
+  declaredSizes: string | null;
+  type: string | null;
+  index: number;
+  source: "link" | "manifest" | "meta" | "implicit";
+  /** Populated only when probed: HTTP status and the ACTUAL decoded pixel size. */
+  status?: number | null;
+  actualSize?: { width: number; height: number } | null;
+}
+
+export interface FaviconReport {
+  candidates: IconRecord[];
+  /** Spec rule: the LAST equally-appropriate icon declared in tree order wins, and a 404
+   * candidate falls through to the next — so every candidate must be probed, not just one. */
+  effective: string | null;
+  /** Google SERP eligibility is a separate question from browser-tab display. */
+  googleSerpEligible: boolean | null;
+  googleSerpBlockers: string[];
+}
+
+export interface HeadingRecord {
+  level: 1 | 2 | 3 | 4 | 5 | 6;
+  text: string;
+  /** Document order ACROSS levels — hierarchy checks need sequence, not per-level buckets. */
+  index: number;
+  inMain: boolean;
+}
+
+export interface DocumentStructure {
+  headings: HeadingRecord[];
+  paragraphs: number;
+  lists: { ordered: number; unordered: number; definition: number };
+  /** th/caption presence separates a real data table from a layout table. */
+  tables: { total: number; withTh: number; withCaption: number };
+  codeBlocks: number;
+  blockquotes: number;
+  /** Landmark elements present: main, article, nav, aside, header, footer, section[aria-label]. */
+  landmarks: string[];
+}
+
+export interface FontFaceRecord {
+  family: string;
+  source: string;
+  origin: "same-origin" | "third-party";
+  host: string | null;
+  /** font-display graded by VALUE — Lighthouse's own audit wrongly passes `block`. */
+  display: string | null;
+  preloaded: boolean;
+  /** preload as=font without crossorigin ⇒ guaranteed double download. Zero false positives. */
+  preloadMissingCrossorigin: boolean;
+}
+
+export interface FontReport {
+  faces: FontFaceRecord[];
+  /** Distinct third-party hosts serving fonts — GDPR exposure, not just a perf finding. */
+  thirdPartyHosts: string[];
+  /** Families actually used by rendered text, when the browser pass observed them. */
+  usedFamilies?: string[];
 }
 
 export interface ExtractionResult {
@@ -266,6 +405,14 @@ export interface ExtractionResult {
   metaKeywords?: string | null;
   pixelWidths?: PixelWidths;
   pageStats?: PageStats;
+  /** v3 fields (extraction-completeness wave). Same "undefined ≠ empty" contract as v2 above. */
+  headBoundary?: HeadBoundary;
+  charset?: CharsetInfo;
+  baseHref?: BaseHrefInfo;
+  headMeta?: HeadMetaReport;
+  favicons?: FaviconReport;
+  structure?: DocumentStructure;
+  fonts?: FontReport;
 }
 
 export interface CrawledPage extends ExtractionResult {

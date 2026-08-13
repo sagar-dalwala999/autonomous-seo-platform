@@ -21,6 +21,7 @@ import { extractContacts } from "./contacts";
 import { extractHreflang } from "./hreflang";
 import { estimateTitlePx, estimateMetaDescriptionPx } from "./pixel-width";
 import { extractPageStats } from "./pageStats";
+import { extractHeadBoundary, extractCharset, extractBaseHrefInfo } from "./head";
 import { resolveBase } from "./shared";
 
 export {
@@ -44,6 +45,7 @@ export { extractContacts } from "./contacts";
 export { extractHreflang } from "./hreflang";
 export { estimateTitlePx, estimateMetaDescriptionPx } from "./pixel-width";
 export { extractPageStats } from "./pageStats";
+export { extractHeadBoundary, extractCharset, extractBaseHrefInfo } from "./head";
 
 /** Runs `fn`, swallowing any error so one broken field can never take down the whole page record. */
 function safe<T>(fn: () => T, fallback: T): T {
@@ -59,7 +61,9 @@ function safe<T>(fn: () => T, fallback: T): T {
  * broken evidence (e.g. invalid JSON-LD) is preserved in the result, not raised.
  */
 export function extractPage(artifact: FetchArtifact, scope: CrawlScope): ExtractionResult {
-  const $ = cheerio.load(artifact.html ?? "");
+  const html = artifact.html ?? "";
+  // Location info is needed for head-boundary/charset byte offsets; one annotated parse beats two.
+  const $ = cheerio.load(html, { sourceCodeLocationInfo: true } as Parameters<typeof cheerio.load>[1]);
   const base = safe(() => resolveBase($, artifact.finalUrl), artifact.finalUrl);
   const headers = artifact.headers ?? {};
 
@@ -89,10 +93,13 @@ export function extractPage(artifact: FetchArtifact, scope: CrawlScope): Extract
       titlePx: safe(() => estimateTitlePx(title), null),
       metaDescriptionPx: safe(() => estimateMetaDescriptionPx(metaDescription), null),
     },
+    headBoundary: safe(() => extractHeadBoundary($), { elementCount: 0, closedBy: null, closedAtOffset: null, stranded: [] }),
+    charset: safe(() => extractCharset($, html, headers), { value: null, source: null, metaOffset: null, effective: false }),
+    baseHref: safe(() => extractBaseHrefInfo($), { href: null, count: 0 }),
     pageStats: safe(
-      () => extractPageStats($, artifact.html ?? "", content.text, headers, artifact.httpVersion ?? null),
+      () => extractPageStats($, html, content.text, headers, artifact.httpVersion ?? null),
       {
-        htmlBytes: Buffer.byteLength(artifact.html ?? "", "utf8"),
+        htmlBytes: Buffer.byteLength(html, "utf8"),
         textRatio: 0,
         domNodes: 0,
         contentEncoding: headers["content-encoding"] ?? null,
