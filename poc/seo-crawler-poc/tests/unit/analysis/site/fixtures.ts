@@ -109,6 +109,9 @@ export function makeSitemap(overrides: Partial<SitemapResult>): SitemapResult {
     entries: overrides.entries ?? [],
     files: overrides.files ?? [],
     errors: overrides.errors ?? [],
+    // Spread after the defaults so optional fields (lastmodTrust, crossHostEntryCount) pass
+    // through — they were previously silently dropped, which is a fixture bug, not a rule bug.
+    ...overrides,
   };
 }
 

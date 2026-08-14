@@ -1,59 +1,86 @@
-import Link from "next/link";
-import { cn } from "@/lib/cn";
+"use client";
+
+import { Chip } from "@/components/ui/chip";
+import type { AutomationLevel } from "@/lib/data-issue-extras";
 import type { IssueSeverity } from "@/lib/types";
 
+const SEVERITY_LABEL: Record<IssueSeverity, string> = { error: "Error", warning: "Warning", notice: "Notice" };
+const AUTOMATION_LABEL: Record<AutomationLevel | "not-classified", string> = {
+  "auto-safe": "Auto-safe",
+  "auto-with-review": "Auto, review",
+  "human-only": "Human-only",
+  "not-classified": "Not classified",
+};
+
 interface Props {
-  runId: string;
   severities: { key: IssueSeverity; count: number }[];
   categories: string[];
+  automationLevels: { key: AutomationLevel | "not-classified"; count: number }[];
   activeSeverity: IssueSeverity | null;
   activeCategory: string | null;
+  activeAutomation: AutomationLevel | "not-classified" | null;
+  automationDataAvailable: boolean;
+  onSeverity: (v: IssueSeverity | null) => void;
+  onCategory: (v: string | null) => void;
+  onAutomation: (v: AutomationLevel | "not-classified" | null) => void;
 }
 
-const LABEL: Record<IssueSeverity, string> = { error: "Error", warning: "Warning", notice: "Notice" };
-
-function chipHref(runId: string, severity: string | null, category: string | null): string {
-  const params = new URLSearchParams({ run: runId });
-  if (severity) params.set("severity", severity);
-  if (category) params.set("category", category);
-  return `/issues?${params.toString()}`;
-}
-
-function chipClass(active: boolean): string {
-  return cn(
-    "inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-xs font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary",
-    active
-      ? "border-primary bg-primary text-primary-contrast"
-      : "border-border bg-subtle text-secondary hover:bg-elevated hover:text-foreground",
-  );
-}
-
-/** Severity + category filters, both reflected in the URL (?severity=&category=) so the view is
- *  shareable and back/forward-safe — design-dna-v2 Law 1. */
-export function IssuesFilterChips({ runId, severities, categories, activeSeverity, activeCategory }: Props) {
-  const total = severities.reduce((sum, s) => sum + s.count, 0);
+/** Client-callback chip bar (URL sync happens one level up in issues-client.tsx) — severity + fix
+ *  type (automation class) + category, every chip's count matching exactly what it filters to
+ *  (own hard rule: chip counts must match their destinations). */
+export function IssuesFilterChips({
+  severities,
+  categories,
+  automationLevels,
+  activeSeverity,
+  activeCategory,
+  activeAutomation,
+  automationDataAvailable,
+  onSeverity,
+  onCategory,
+  onAutomation,
+}: Props) {
+  const totalSeverity = severities.reduce((sum, s) => sum + s.count, 0);
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        <Link href={chipHref(runId, null, activeCategory)} className={chipClass(activeSeverity === null)}>
-          All severities <span className="tabular-nums">{total}</span>
-        </Link>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-faint">Severity</span>
+        <Chip active={activeSeverity === null} onClick={() => onSeverity(null)}>
+          All <span className="tabular-nums">{totalSeverity}</span>
+        </Chip>
         {severities.map((s) => (
-          <Link key={s.key} href={chipHref(runId, s.key, activeCategory)} className={chipClass(activeSeverity === s.key)}>
+          <Chip key={s.key} active={activeSeverity === s.key} onClick={() => onSeverity(activeSeverity === s.key ? null : s.key)}>
             {s.key === "error" && s.count > 0 && <span className="h-1.5 w-1.5 rounded-full bg-danger" aria-hidden="true" />}
-            {LABEL[s.key]} <span className="tabular-nums">{s.count}</span>
-          </Link>
+            {SEVERITY_LABEL[s.key]} <span className="tabular-nums">{s.count}</span>
+          </Chip>
         ))}
       </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-faint">Fix type</span>
+        {!automationDataAvailable && (
+          <span className="text-[11px] text-faint">(not classified for this run — run npm run analyze:automation)</span>
+        )}
+        <Chip active={activeAutomation === null} onClick={() => onAutomation(null)}>
+          All
+        </Chip>
+        {automationLevels.map((a) => (
+          <Chip key={a.key} active={activeAutomation === a.key} onClick={() => onAutomation(activeAutomation === a.key ? null : a.key)}>
+            {AUTOMATION_LABEL[a.key]} <span className="tabular-nums">{a.count}</span>
+          </Chip>
+        ))}
+      </div>
+
       {categories.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <Link href={chipHref(runId, activeSeverity, null)} className={chipClass(activeCategory === null)}>
-            All categories
-          </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-faint">Area</span>
+          <Chip active={activeCategory === null} onClick={() => onCategory(null)}>
+            All
+          </Chip>
           {categories.map((c) => (
-            <Link key={c} href={chipHref(runId, activeSeverity, c)} className={chipClass(activeCategory === c)}>
+            <Chip key={c} active={activeCategory === c} onClick={() => onCategory(activeCategory === c ? null : c)}>
               {c}
-            </Link>
+            </Chip>
           ))}
         </div>
       )}

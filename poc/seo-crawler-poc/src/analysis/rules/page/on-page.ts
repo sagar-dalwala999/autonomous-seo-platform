@@ -1,9 +1,40 @@
 /** Title / meta description / heading rule pack. */
 import type { RuleMeta } from "../../../models/types";
 import type { PageRule } from "./index";
-import { issueFor } from "./shared";
+import { capturedList, issueFor } from "./shared";
 
 const isBlank = (s: string | null): boolean => s === null || s.trim() === "";
+
+/* Screaming Frog's published minimums, used when a config predates these thresholds. */
+const DEFAULT_TITLE_MIN_PX = 200;
+const DEFAULT_DESC_MIN_PX = 400;
+const DEFAULT_URL_MAX_CHARS = 115;
+
+function urlTooLong(): PageRule {
+  const meta: RuleMeta = {
+    id: "url-too-long",
+    category: "on-page",
+    defaultSeverity: "notice",
+    description: "URL exceeds the configured maximum character length (Screaming Frog flags over 115).",
+    howToFix: "Shorten the URL slug; long URLs are truncated in search results and harder to share.",
+    dataRequirements: [],
+  };
+  return {
+    meta,
+    evaluate(page, config) {
+      const url = page.normalizedUrl ?? page.url;
+      const max = config.thresholds.urlMaxChars ?? DEFAULT_URL_MAX_CHARS;
+      if (url.length <= max) return [];
+      return [
+        issueFor(meta, config, page, {
+          message: `URL is ${url.length} characters.`,
+          evidence: [{ field: "normalizedUrl", value: url }],
+          threshold: `url ${url.length} chars > max ${max}`,
+        }),
+      ];
+    },
+  };
+}
 
 function titleMissing(): PageRule {
   const meta: RuleMeta = {
@@ -37,16 +68,23 @@ function titleTooShort(): PageRule {
     evaluate(page, config) {
       if (isBlank(page.title)) return []; // covered by title-missing
       const len = page.title!.length;
-      if (len >= config.thresholds.titleMinChars) return [];
-      const px = page.pixelWidths?.titlePx;
+      const px = page.pixelWidths?.titlePx ?? null;
+      const minPx = config.thresholds.titleMinPx ?? DEFAULT_TITLE_MIN_PX;
+      const underChars = len < config.thresholds.titleMinChars;
+      // Pixel width is the real SERP constraint: "IIII" and "WWWW" are the same char count.
+      const underPx = px !== null && px < minPx;
+      if (!underChars && !underPx) return [];
+      const parts: string[] = [];
+      if (underChars) parts.push(`title ${len} chars < min ${config.thresholds.titleMinChars}`);
+      if (underPx) parts.push(`title ~${px}px < min ${minPx}px`);
       return [
         issueFor(meta, config, page, {
-          message: `Title is only ${len} characters.`,
+          message: underChars ? `Title is only ${len} characters.` : `Title is only ~${px}px wide.`,
           evidence: [
             { field: "title", value: page.title },
-            ...(px !== undefined && px !== null ? [{ field: "pixelWidths.titlePx", value: px }] : []),
+            ...(px !== null ? [{ field: "pixelWidths.titlePx", value: px }] : []),
           ],
-          threshold: `title ${len} chars < min ${config.thresholds.titleMinChars}`,
+          threshold: parts.join("; "),
         }),
       ];
     },
@@ -149,12 +187,22 @@ function descTooShort(): PageRule {
     evaluate(page, config) {
       if (isBlank(page.metaDescription)) return [];
       const len = page.metaDescription!.length;
-      if (len >= config.thresholds.descMinChars) return [];
+      const px = page.pixelWidths?.metaDescriptionPx ?? null;
+      const minPx = config.thresholds.descMinPx ?? DEFAULT_DESC_MIN_PX;
+      const underChars = len < config.thresholds.descMinChars;
+      const underPx = px !== null && px < minPx;
+      if (!underChars && !underPx) return [];
+      const parts: string[] = [];
+      if (underChars) parts.push(`description ${len} chars < min ${config.thresholds.descMinChars}`);
+      if (underPx) parts.push(`description ~${px}px < min ${minPx}px`);
       return [
         issueFor(meta, config, page, {
-          message: `Meta description is only ${len} characters.`,
-          evidence: [{ field: "metaDescription", value: page.metaDescription }],
-          threshold: `description ${len} chars < min ${config.thresholds.descMinChars}`,
+          message: underChars ? `Meta description is only ${len} characters.` : `Meta description is only ~${px}px wide.`,
+          evidence: [
+            { field: "metaDescription", value: page.metaDescription },
+            ...(px !== null ? [{ field: "pixelWidths.metaDescriptionPx", value: px }] : []),
+          ],
+          threshold: parts.join("; "),
         }),
       ];
     },
@@ -263,21 +311,137 @@ function headingHierarchySkip(): PageRule {
     id: "heading-hierarchy-skip",
     category: "on-page",
     defaultSeverity: "notice",
-    description: "Page uses H3 headings with no H2 present — the hierarchy skips a level.",
-    howToFix: "Insert H2 headings so the outline steps down one level at a time.",
+    description:
+      "The heading outline jumps down more than one level (H2 to H4, or a first heading below H2). " +
+      "Uses the full document-order sequence from structure.headings when captured; pre-v3 runs fall back to the " +
+      "h1/h2/h3 buckets, which can only see the H3-with-no-H2 case.",
+    howToFix: "Insert the intermediate headings so the outline steps down one level at a time.",
     dataRequirements: [],
   };
   return {
     meta,
     evaluate(page, config) {
-      if (page.headings.h3.length === 0 || page.headings.h2.length > 0) return [];
+      const sequence = page.structure?.headings;
+      if (!capturedList(sequence)) {
+        if (page.headings.h3.length === 0 || page.headings.h2.length > 0) return [];
+        return [
+          issueFor(meta, config, page, {
+            message: "H3 headings present with no H2 — heading hierarchy skips a level.",
+            evidence: [
+              { field: "headings.h2", value: page.headings.h2 },
+              { field: "headings.h3", value: page.headings.h3 },
+            ],
+          }),
+        ];
+      }
+
+      // The document's implied starting level is H1, so a first heading of H3+ is itself a skip.
+      const skips = sequence
+        .map((heading, i) => ({ heading, i, from: i === 0 ? 1 : sequence[i - 1]!.level }))
+        .filter(({ heading, from }) => heading.level - from > 1);
+      if (skips.length === 0) return [];
+      const described = skips.slice(0, 5).map(({ heading, from }) => `H${from} to H${heading.level} ("${heading.text.slice(0, 40)}")`);
       return [
         issueFor(meta, config, page, {
-          message: "H3 headings present with no H2 — heading hierarchy skips a level.",
+          message: `Heading outline skips ${skips.length} level transition(s): ${described.join("; ")}${skips.length > described.length ? ", …" : ""}.`,
+          evidence: skips.map(({ heading, i }) => ({ field: `structure.headings[${i}].level`, value: heading.level })),
+        }),
+      ];
+    },
+  };
+}
+
+function headingEmpty(): PageRule {
+  const meta: RuleMeta = {
+    id: "heading-empty",
+    category: "on-page",
+    defaultSeverity: "notice",
+    description: "A heading tag (H1-H6) is present in document order but carries no text.",
+    howToFix: "Remove the empty heading, or give it text — an empty heading breaks the outline and contributes nothing.",
+    dataRequirements: ["structure.headings"],
+  };
+  return {
+    meta,
+    evaluate(page, config) {
+      const sequence = page.structure?.headings;
+      if (!capturedList(sequence)) return null;
+      const empties = sequence
+        .map((h, i) => ({ h, i }))
+        .filter(({ h }) => h.text.trim() === "");
+      if (empties.length === 0) return [];
+      return [
+        issueFor(meta, config, page, {
+          message: `${empties.length} empty heading tag(s): ${empties.slice(0, 3).map(({ h }) => `<h${h.level}>`).join(", ")}${empties.length > 3 ? ", …" : ""}.`,
+          evidence: empties.slice(0, 5).map(({ i }) => ({ field: `structure.headings[${i}].text`, value: "" })),
+        }),
+      ];
+    },
+  };
+}
+
+/* Kishan's rules.js 'title-h1-mismatch': needs at least 2 "significant" (>=4 char) words on
+ * each side to judge either way — otherwise a short title/H1 too easily has zero legitimate overlap. */
+const SIGNIFICANT_WORD_MIN_LEN = 4;
+function significantWords(s: string): Set<string> {
+  return new Set((s.toLowerCase().match(/[a-z0-9]{4,}/g) ?? []).filter((w) => w.length >= SIGNIFICANT_WORD_MIN_LEN));
+}
+
+function titleH1Mismatch(): PageRule {
+  const meta: RuleMeta = {
+    id: "title-h1-mismatch",
+    category: "on-page",
+    defaultSeverity: "notice",
+    description: "Title and H1 share no significant word — the search-result headline and the page's own heading describe different things.",
+    howToFix: "Keep the same subject in both. They need not match word for word — they should agree.",
+    dataRequirements: [],
+  };
+  return {
+    meta,
+    evaluate(page, config) {
+      if (isBlank(page.title) || page.headings.h1.length === 0) return [];
+      const t = significantWords(page.title!);
+      const h = significantWords(page.headings.h1[0]!);
+      if (t.size < 2 || h.size < 2) return []; // too short on either side to judge
+      const overlap = [...h].some((w) => t.has(w));
+      if (overlap) return [];
+      return [
+        issueFor(meta, config, page, {
+          message: `Title and H1 share no significant word: title "${page.title}" vs H1 "${page.headings.h1[0]}".`,
           evidence: [
+            { field: "title", value: page.title },
+            { field: "headings.h1", value: page.headings.h1 },
+          ],
+        }),
+      ];
+    },
+  };
+}
+
+function longContentNoSubheadings(): PageRule {
+  const meta: RuleMeta = {
+    id: "long-content-no-subheadings",
+    category: "on-page",
+    defaultSeverity: "notice",
+    description: "Content is long enough to need breaking up, but the page has at most one H2/H3 subheading.",
+    howToFix: "Break the copy into sections with descriptive H2/H3 subheadings.",
+    dataRequirements: [],
+  };
+  return {
+    meta,
+    evaluate(page, config) {
+      const minWords = config.thresholds.longContentNoSubheadingsWords ?? 300;
+      if (page.content.wordCount <= minWords) return [];
+      const subheadings = page.headings.h2.length + page.headings.h3.length;
+      if (subheadings > 1) return [];
+      return [
+        issueFor(meta, config, page, {
+          message: `${page.content.wordCount} words with only ${subheadings} subheading(s) (H2+H3) to break it up.`,
+          evidence: [
+            { field: "content.wordCount", value: page.content.wordCount },
             { field: "headings.h2", value: page.headings.h2 },
             { field: "headings.h3", value: page.headings.h3 },
           ],
+          threshold: `wordCount ${page.content.wordCount} > min ${minWords}, subheadings ${subheadings} <= 1`,
         }),
       ];
     },
@@ -286,6 +450,7 @@ function headingHierarchySkip(): PageRule {
 
 export function onPageRules(): PageRule[] {
   return [
+    urlTooLong(),
     titleMissing(),
     titleTooShort(),
     titleTooLong(),
@@ -297,5 +462,8 @@ export function onPageRules(): PageRule[] {
     h1Missing(),
     h1Multiple(),
     headingHierarchySkip(),
+    headingEmpty(),
+    titleH1Mismatch(),
+    longContentNoSubheadings(),
   ];
 }

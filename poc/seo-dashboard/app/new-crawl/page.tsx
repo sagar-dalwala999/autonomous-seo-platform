@@ -10,8 +10,10 @@ import { FormField } from "@/components/new-crawl/FormField";
 import { FormSection } from "@/components/new-crawl/FormSection";
 import { RenderModeCards } from "@/components/new-crawl/RenderModeCards";
 import { ScopeCards, type CrawlScope } from "@/components/new-crawl/ScopeCards";
-import { RobotsSwitch } from "@/components/new-crawl/RobotsSwitch";
+import { SettingSwitch } from "@/components/new-crawl/SettingSwitch";
+import { AuthSection, type AuthMethod } from "@/components/new-crawl/AuthSection";
 import { ProgressPanel } from "@/components/new-crawl/ProgressPanel";
+import type { CancelledCrawlStatus } from "@/lib/crawl-control-client";
 import type { CrawlStatusResponse, PanelState, RenderMode } from "@/components/new-crawl/types";
 
 // --max-depth live-verified 2026-08-11 (depth-1 target-site run: 21 pages vs 25, maxDepthSeen 1).
@@ -53,11 +55,28 @@ export default function NewCrawlPage() {
   const [maxDepthInput, setMaxDepthInput] = useState("");
   const [respectRobots, setRespectRobots] = useState(true);
   const [render, setRender] = useState<RenderMode>("auto");
+  // Off by default: --screenshots forces a browser render on every page, not just JS-flagged ones.
+  const [screenshots, setScreenshots] = useState(false);
   const [aliases, setAliases] = useState("");
+
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [authMethod, setAuthMethod] = useState<AuthMethod>("none");
+  const [basicUsername, setBasicUsername] = useState("");
+  const [basicPassword, setBasicPassword] = useState("");
+  const [cookie, setCookie] = useState("");
+  const [headerName, setHeaderName] = useState("");
+  const [headerValue, setHeaderValue] = useState("");
+  const [skipLogoutDestructive, setSkipLogoutDestructive] = useState(true);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const [urlError, setUrlError] = useState<string | null>(null);
   const [maxPagesError, setMaxPagesError] = useState<string | null>(null);
   const [maxDepthError, setMaxDepthError] = useState<string | null>(null);
+  const [basicUsernameError, setBasicUsernameError] = useState<string | null>(null);
+  const [basicPasswordError, setBasicPasswordError] = useState<string | null>(null);
+  const [cookieError, setCookieError] = useState<string | null>(null);
+  const [headerNameError, setHeaderNameError] = useState<string | null>(null);
+  const [headerValueError, setHeaderValueError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const [runId, setRunId] = useState<string | null>(null);
@@ -93,13 +112,70 @@ export default function NewCrawlPage() {
       if (data.state === "done") {
         setPanelState("done");
         stopPolling();
-      } else if (data.state === "failed") {
-        setPanelState("failed");
+        // This run now has a report.json — the sidebar "Runs" count (read once per layout render,
+        // not re-polled) would otherwise stay stale until the next full nav/reload.
+        router.refresh();
+      } else if (data.state === "cancelled") {
+        setPanelState("cancelled");
         stopPolling();
+        router.refresh();
+      } else if (data.state === "failed") {
+        // Legacy fallback: runs cancelled before `cancelled` became its own CrawlState still have
+        // a status file that literally says `failed` + a note — read that back honestly rather
+        // than as a generic failure, covering cancels completed via a route other than this button.
+        setPanelState(data.note?.toLowerCase().includes("cancelled") ? "cancelled" : "failed");
+        stopPolling();
+        router.refresh();
       }
     } catch {
       // transient network hiccup — next 2s tick retries
     }
+  }
+
+  function handleCancelled(crawl: CancelledCrawlStatus) {
+    stopPolling();
+    setStatus((prev) => (prev ? { ...prev, state: "cancelled", note: crawl.note ?? prev.note, exitCode: crawl.exitCode ?? prev.exitCode } : prev));
+    setPanelState("cancelled");
+    // This run is now visible in Runs history (lib/data.ts's listRuns) — refresh so the sidebar
+    // count reflects it immediately instead of only after the next nav/reload.
+    router.refresh();
+  }
+
+  /** Mirrors the crawl-runner.ts server-side check — never trust the client alone. */
+  function validateAuth(): boolean {
+    setBasicUsernameError(null);
+    setBasicPasswordError(null);
+    setCookieError(null);
+    setHeaderNameError(null);
+    setHeaderValueError(null);
+    if (!authEnabled) return true;
+
+    let ok = true;
+    if (authMethod === "basic") {
+      if (!basicUsername.trim()) {
+        setBasicUsernameError("Username is required.");
+        ok = false;
+      }
+      if (!basicPassword.trim()) {
+        setBasicPasswordError("Password is required.");
+        ok = false;
+      }
+    } else if (authMethod === "cookie") {
+      if (!cookie.trim()) {
+        setCookieError("Paste the Cookie header value.");
+        ok = false;
+      }
+    } else if (authMethod === "header") {
+      if (!headerName.trim()) {
+        setHeaderNameError("Header name is required.");
+        ok = false;
+      }
+      if (!headerValue.trim()) {
+        setHeaderValueError("Header value is required.");
+        ok = false;
+      }
+    }
+    return ok;
   }
 
   async function submit(startUrl: string) {
@@ -109,8 +185,9 @@ export default function NewCrawlPage() {
     setUrlError(uErr);
     setMaxPagesError(pErr);
     setMaxDepthError(dErr);
+    const authOk = validateAuth();
 
-    if (uErr || pErr || dErr) {
+    if (uErr || pErr || dErr || !authOk) {
       setFormError("Fix the highlighted fields before starting.");
       if (uErr) urlInputRef.current?.focus();
       return;
@@ -123,6 +200,18 @@ export default function NewCrawlPage() {
       .map((h) => h.trim())
       .filter(Boolean);
 
+    // auth/safety null when the login toggle is off or method is "none" — an anonymous crawl
+    // never sends credentials, and the server derives its own (permissive) safety defaults.
+    const auth =
+      authEnabled && authMethod !== "none"
+        ? {
+            basic: authMethod === "basic" ? { username: basicUsername.trim(), password: basicPassword } : null,
+            cookie: authMethod === "cookie" ? cookie.trim() : null,
+            headers: authMethod === "header" ? { [headerName.trim()]: headerValue } : {},
+          }
+        : null;
+    const safety = auth ? { denyLogout: skipLogoutDestructive, denyDestructive: skipLogoutDestructive, excludePatterns: [] } : null;
+
     try {
       const res = await fetch("/api/crawls", {
         method: "POST",
@@ -133,7 +222,10 @@ export default function NewCrawlPage() {
           maxDepth: MAX_DEPTH_SUPPORTED && maxDepthInput.trim() ? Number(maxDepthInput) : null,
           respectRobots,
           render,
+          screenshots,
           aliases: aliasList,
+          auth,
+          safety,
         }),
       });
       const data = await res.json();
@@ -325,7 +417,68 @@ export default function NewCrawlPage() {
                 </p>
               </div>
 
-              <RobotsSwitch checked={respectRobots} onChange={setRespectRobots} disabled={locked} />
+              <SettingSwitch
+                label="Respect robots.txt"
+                checked={respectRobots}
+                onChange={setRespectRobots}
+                onText="On — blocked URLs are recorded, not fetched"
+                offText="Off — robots rules ignored for this crawl"
+                disabled={locked}
+              />
+
+              <SettingSwitch
+                label="Capture screenshots"
+                checked={screenshots}
+                onChange={setScreenshots}
+                onText="On — every page renders in headless Chromium, so the crawl is slower"
+                offText="Off — the Screenshot tab on a page stays disabled for this run"
+                offTone="neutral"
+                disabled={locked}
+              />
+            </FormSection>
+
+            <FormSection label="Access" className="border-t border-border pt-5">
+              <AuthSection
+                enabled={authEnabled}
+                onEnabledChange={setAuthEnabled}
+                disabled={locked}
+                method={authMethod}
+                onMethodChange={setAuthMethod}
+                basicUsername={basicUsername}
+                onBasicUsernameChange={(v) => {
+                  setBasicUsername(v);
+                  if (basicUsernameError) setBasicUsernameError(null);
+                }}
+                basicUsernameError={basicUsernameError}
+                basicPassword={basicPassword}
+                onBasicPasswordChange={(v) => {
+                  setBasicPassword(v);
+                  if (basicPasswordError) setBasicPasswordError(null);
+                }}
+                basicPasswordError={basicPasswordError}
+                cookie={cookie}
+                onCookieChange={(v) => {
+                  setCookie(v);
+                  if (cookieError) setCookieError(null);
+                }}
+                cookieError={cookieError}
+                headerName={headerName}
+                onHeaderNameChange={(v) => {
+                  setHeaderName(v);
+                  if (headerNameError) setHeaderNameError(null);
+                }}
+                headerNameError={headerNameError}
+                headerValue={headerValue}
+                onHeaderValueChange={(v) => {
+                  setHeaderValue(v);
+                  if (headerValueError) setHeaderValueError(null);
+                }}
+                headerValueError={headerValueError}
+                skipLogoutDestructive={skipLogoutDestructive}
+                onSkipLogoutDestructiveChange={setSkipLogoutDestructive}
+                advancedOpen={advancedOpen}
+                onAdvancedOpenChange={setAdvancedOpen}
+              />
             </FormSection>
 
             <div className="flex flex-col gap-2">
@@ -357,7 +510,15 @@ export default function NewCrawlPage() {
         </Card>
 
         <Card className="flex flex-col gap-4">
-          <ProgressPanel panelState={panelState} url={url} runId={runId} status={status} onViewRun={viewRun} onRetry={resetForm} />
+          <ProgressPanel
+            panelState={panelState}
+            url={url}
+            runId={runId}
+            status={status}
+            onViewRun={viewRun}
+            onRetry={resetForm}
+            onCancelled={handleCancelled}
+          />
         </Card>
       </div>
     </div>

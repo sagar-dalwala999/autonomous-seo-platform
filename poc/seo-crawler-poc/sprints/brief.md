@@ -22,6 +22,29 @@ capabilities:
 qa_user_test_creds: n/a (single-user CLI)
 ```
 
+> **SUPERSEDED IN PART — audited 2026-08-13.** This brief is the POC-1 intake contract and is kept as
+> written; the capability block above described POC-1 at dispatch time and several lines are no
+> longer true of the shipped system. Corrections, each with the check that proves it:
+>
+> - `auth: no` → **yes**. HTTP Basic, a pasted cookie, custom headers, and browser-driven form login
+>   all ship (`src/models/types.ts` `CrawlAuth`/`FormLoginConfig`, `src/crawler/formLogin.ts`).
+> - `secrets: no` → **yes**, credentials are accepted and deliberately kept out of run evidence and
+>   logs (`CrawlAuth` doc comment; `authLabel` in `src/index.ts`).
+> - `api_routes: no` → **5** (`find ../seo-dashboard/app -name route.ts`).
+> - `background_jobs: no` → **yes**, the dashboard spawns the crawler and then the analyzer as child
+>   processes (`../seo-dashboard/lib/crawl-runner.ts`).
+> - `qa_user_test_creds: n/a (single-user CLI)` → it is a CLI **plus** a web dashboard, as
+>   `surface: mixed` two lines above already says. Fixture credentials for the authenticated path
+>   live in `../target-site/lib/session.ts`.
+> - `db: no` and `external_deploy: no` are still **true** — flat JSON under `storage/runs/`, and no
+>   deploy config anywhere.
+> - §6b's "minhash is Tier 2" and the near-duplicate wordCount-proximity proxy are **superseded**:
+>   real MinHash + LSH shipped in `src/analysis/similarity.ts` (WORK_LOG §C3).
+> - The "do not build" list further down names **scoring** — an internal-PageRank pass shipped anyway
+>   (`src/graph/`, `npm run graph`). "Crawl resume" from that same list is still correctly not built.
+> - The acceptance gate maps the 18 seeded classes onto **30 rows** (sub-items plus one derived bonus
+>   row), not 18. Its current result is disputed — see "Proof of correctness" in the root `README.md`.
+
 ## 1. Product Overview
 
 A command-line crawler that proves the crawl/data-ingestion foundation for the Autonomous SEO

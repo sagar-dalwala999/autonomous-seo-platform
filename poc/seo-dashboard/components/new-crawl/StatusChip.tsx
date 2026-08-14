@@ -1,13 +1,14 @@
-import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, Ban } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-type ChipState = "starting" | "running" | "done" | "failed";
+type ChipState = "starting" | "running" | "done" | "failed" | "cancelled";
 
 const CONFIG: Record<ChipState, { label: string; classes: string }> = {
   starting: { label: "Starting", classes: "bg-primary/10 text-primary" },
   running: { label: "Running", classes: "bg-primary/10 text-primary" },
   done: { label: "Done", classes: "bg-ok-bg text-ok" },
   failed: { label: "Failed", classes: "bg-danger-bg text-danger" },
+  cancelled: { label: "Cancelled", classes: "bg-subtle text-secondary" },
 };
 
 export function StatusChip({ state }: { state: ChipState }) {
@@ -19,6 +20,8 @@ export function StatusChip({ state }: { state: ChipState }) {
         <Loader2 size={12} strokeWidth={2.5} className="animate-spin" aria-hidden="true" />
       ) : state === "done" ? (
         <CheckCircle2 size={12} strokeWidth={2.5} aria-hidden="true" />
+      ) : state === "cancelled" ? (
+        <Ban size={12} strokeWidth={2.5} aria-hidden="true" />
       ) : (
         <XCircle size={12} strokeWidth={2.5} aria-hidden="true" />
       )}

@@ -46,15 +46,22 @@ export interface InlinkOccurrence {
   link: LinkRecord;
 }
 
-/** target pathname -> every internal link occurrence pointing at it, keeping the source page +
- * array index so callers can build evidence pointers that resolve to a real links[N] field. */
+/** target pathname -> every internal INBOUND link occurrence pointing at it, keeping the source
+ * page + array index so callers can build evidence pointers that resolve to a real links[N]
+ * field. Self-links are excluded here rather than per-consumer: a page linking to itself is not
+ * a vote from elsewhere, and filtering it downstream let the same run report three different
+ * inlink counts depending on who asked. */
 export function buildInlinkOccurrences(pages: CrawledPage[]): Map<string, InlinkOccurrence[]> {
   const map = new Map<string, InlinkOccurrence[]>();
   for (const page of pages) {
+    // Both identities, since a redirected page is reachable under either pathname.
+    const selfPaths = new Set(
+      [pathnameOf(primaryUrl(page)), pathnameOf(page.finalUrl)].filter((p): p is string => p !== null),
+    );
     page.links.forEach((link, linkIndex) => {
       if (link.type !== "internal") return;
       const targetPath = pathnameOf(link.targetNormalized ?? link.target);
-      if (!targetPath) return;
+      if (!targetPath || selfPaths.has(targetPath)) return;
       const list = map.get(targetPath);
       const occurrence = { source: page, linkIndex, link };
       if (list) list.push(occurrence);
@@ -105,4 +112,21 @@ export function httpFailurePaths(
     if (p) set.add(p);
   }
   return set;
+}
+
+/** 401/403 means "credentials required", not "broken" — an anonymous crawl is SUPPOSED to get
+ * these on a protected area, so they must not be reported as dead links. */
+export const AUTH_REQUIRED_STATUSES = new Set([401, 403]);
+
+/** Failed path -> status code, so callers can tell an auth wall from a dead page. */
+export function httpFailureStatusByPath(
+  failures: { normalizedUrl: string | null; url: string; reason: string; statusCode: number | null }[],
+): Map<string, number | null> {
+  const map = new Map<string, number | null>();
+  for (const f of failures) {
+    if (f.reason !== "http-4xx" && f.reason !== "http-5xx") continue;
+    const p = pathnameOf(f.normalizedUrl ?? f.url);
+    if (p && !map.has(p)) map.set(p, f.statusCode);
+  }
+  return map;
 }

@@ -8,12 +8,14 @@ build/
 *.tsbuildinfo
 next-env.d.ts
 
-# Crawl evidence — regenerable, large, and contains third-party page content
-storage/
+# Crawl evidence — regenerable, large, and contains third-party page content.
+# Path-anchored on purpose: a bare `storage/` matches at any depth and would also swallow
+# src/storage/, the evidence-storage source directory.
+poc/seo-crawler-poc/storage/
 
-# Local run state
+# Local run state — leading `**/` because these live in sub-projects, not the repo root
 *.log
-scripts/.target-site.json
+**/.target-site.json
 **/.crawl-status.json
 
 # Test/tooling artifacts

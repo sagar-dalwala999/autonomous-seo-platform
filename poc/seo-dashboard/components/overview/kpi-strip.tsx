@@ -60,7 +60,7 @@ export function KpiStripView({ strip, runId }: { strip: KpiStrip; runId: string 
   return (
     <Card className="flex flex-col divide-y divide-border p-0 sm:flex-row sm:divide-x sm:divide-y-0">
       <Tile icon={FileStack} label="Pages crawled" kpi={strip.pagesCrawled} href={`/pages?${q}&status=2xx`} />
-      <Tile icon={Timer} label="Avg response time" kpi={strip.avgResponseMs} unit="ms" href={`/pages?${q}&sort=responseTimeMs&dir=desc`} />
+      <Tile icon={Timer} label="Avg response time" kpi={strip.avgResponseMs} unit="ms" href={`/pages?${q}&sort=responseTime&dir=desc`} />
       <Tile icon={Sparkles} label="JS-rendered" kpi={strip.jsRendered} href={`/pages?${q}&rendered=playwright`} />
       <Tile icon={Link2} label="Internal links" kpi={strip.internalLinks} href={`/pages?${q}`} />
     </Card>

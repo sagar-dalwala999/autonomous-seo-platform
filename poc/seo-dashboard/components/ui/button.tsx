@@ -13,8 +13,14 @@ const VARIANT_CLASSES: Record<Variant, string> = {
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg";
 }
+
+const SIZE_CLASSES: Record<NonNullable<Props["size"]>, string> = {
+  sm: "h-8 px-2.5 text-xs",
+  md: "h-9 px-3.5 text-sm",
+  lg: "h-11 px-4 text-sm",
+};
 
 export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
   { variant = "primary", size = "md", className, children, ...rest },
@@ -26,7 +32,7 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
       className={cn(
         "inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition-[transform,background-color,box-shadow] duration-150 ease-out active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50",
         "outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-canvas",
-        size === "sm" ? "h-8 px-2.5 text-xs" : "h-9 px-3.5 text-sm",
+        SIZE_CLASSES[size],
         VARIANT_CLASSES[variant],
         className,
       )}

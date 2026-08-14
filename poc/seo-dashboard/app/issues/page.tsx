@@ -1,19 +1,13 @@
-import Link from "next/link";
-import { History, Sparkles, CheckCircle2, ShieldQuestion } from "lucide-react";
-import { resolveRunId, getPages } from "@/lib/data";
-import { readAnalysisReport, groupIssuesByRule } from "@/lib/data-issues";
-import { findPageIdByUrl } from "@/lib/data-explorer";
+import { History, ShieldQuestion } from "lucide-react";
+import { resolveRunId, getPages, getRun } from "@/lib/data";
+import { readAnalysisReport } from "@/lib/data-issues";
+import { readAutomationReport, readFixPlan, readHealthHistory } from "@/lib/data-issue-extras";
 import { EmptyState } from "@/components/ui/empty-state";
-import { IssuesSummaryBand } from "@/components/issues/issues-summary-band";
-import { IssuesFilterChips } from "@/components/issues/issues-filter-chips";
-import { RuleGroupCard } from "@/components/issues/rule-group-card";
-import type { IssueSeverity } from "@/lib/types";
+import { IssuesClient } from "@/components/issues/issues-client";
 
 interface Props {
-  searchParams: Promise<{ run?: string; severity?: string; category?: string }>;
+  searchParams: Promise<{ run?: string }>;
 }
-
-const SEVERITIES: IssueSeverity[] = ["error", "warning", "notice"];
 
 export default async function IssuesPage({ searchParams }: Props) {
   const sp = await searchParams;
@@ -23,7 +17,7 @@ export default async function IssuesPage({ searchParams }: Props) {
     return <EmptyState icon={History} title="No crawl runs yet" description="Run a crawl first, then analyze it to see issues here." />;
   }
 
-  const [report, { items: pages }] = await Promise.all([readAnalysisReport(runId), getPages(runId, {})]);
+  const [report, pages, { report: summary }] = await Promise.all([readAnalysisReport(runId), getPages(runId), getRun(runId)]);
 
   if (!report) {
     return (
@@ -44,17 +38,25 @@ export default async function IssuesPage({ searchParams }: Props) {
     );
   }
 
-  const activeSeverity = SEVERITIES.includes(sp.severity as IssueSeverity) ? (sp.severity as IssueSeverity) : null;
-  const activeCategory = sp.category ?? null;
+  const [automation, fixPlan, healthHistory] = await Promise.all([
+    readAutomationReport(runId),
+    readFixPlan(runId),
+    summary ? readHealthHistory(summary.startUrl) : Promise.resolve([]),
+  ]);
 
-  let filtered = report.issues;
-  if (activeSeverity) filtered = filtered.filter((i) => i.severity === activeSeverity);
-  if (activeCategory) filtered = filtered.filter((i) => i.category === activeCategory);
+  // Walk backward from the current run to the nearest EARLIER entry that was actually analyzed —
+  // healthHistory can contain crawls with no issues.json (ruleCounts: null) interleaved between
+  // analyzed ones, and the immediately-preceding array index is not necessarily analyzed.
+  const currentIndex = healthHistory.findIndex((h) => h.runId === runId);
+  let previousRuleCounts: Record<string, number> | null = null;
+  for (let i = currentIndex - 1; i >= 0; i--) {
+    if (healthHistory[i].ruleCounts !== null) {
+      previousRuleCounts = healthHistory[i].ruleCounts;
+      break;
+    }
+  }
 
-  const categories = [...new Set(report.issues.map((i) => i.category))].sort();
-  const severityCounts = SEVERITIES.map((key) => ({ key, count: report.counts[key] ?? 0 }));
-  const groups = groupIssuesByRule(filtered, report.pagesAnalyzed);
-  const pageIdToUrl = new Map(pages.map((p) => [p.pageId, p.url]));
+  const pageIdToUrlEntries: [string, string][] = pages.map((p) => [p.pageId, p.url]);
 
   return (
     <div className="space-y-6">
@@ -63,51 +65,29 @@ export default async function IssuesPage({ searchParams }: Props) {
         {new Date(report.generatedAt).toLocaleString()}
       </p>
 
-      <IssuesSummaryBand report={report} />
-
-      <IssuesFilterChips
-        runId={runId}
-        severities={severityCounts}
-        categories={categories}
-        activeSeverity={activeSeverity}
-        activeCategory={activeCategory}
-      />
-
-      {report.rulesSkippedDataUnavailable.length > 0 && (
-        <p className="text-xs text-faint">
-          {report.rulesSkippedDataUnavailable.length} rule{report.rulesSkippedDataUnavailable.length === 1 ? "" : "s"} skipped — data
-          not captured in this run: {report.rulesSkippedDataUnavailable.join(", ")}
-        </p>
-      )}
-
       {report.issues.length === 0 ? (
         <EmptyState
-          icon={CheckCircle2}
+          icon={ShieldQuestion}
           title="This run is clean"
           description={`Health score ${report.healthScore} · ${report.pagesAnalyzed} pages analyzed, zero rule violations.`}
         />
-      ) : groups.length === 0 ? (
-        <EmptyState
-          icon={Sparkles}
-          title="No issues match this filter"
-          description={
-            <Link href={`/issues?run=${encodeURIComponent(runId)}`} className="text-primary underline underline-offset-2">
-              Clear filters
-            </Link>
-          }
-        />
       ) : (
-        <div className="space-y-3">
-          {groups.map((g) => (
-            <RuleGroupCard
-              key={g.ruleId}
-              group={g}
-              runId={runId}
-              pageIdToUrl={pageIdToUrl}
-              resolvePageId={(url) => findPageIdByUrl(pages, url)}
-            />
-          ))}
-        </div>
+        <IssuesClient
+          runId={runId}
+          healthScore={report.healthScore}
+          pagesAnalyzed={report.pagesAnalyzed}
+          issues={report.issues}
+          counts={report.counts}
+          rulesSkippedDataUnavailable={report.rulesSkippedDataUnavailable}
+          pageIdToUrlEntries={pageIdToUrlEntries}
+          automation={automation}
+          fixPlan={fixPlan}
+          healthHistory={healthHistory}
+          previousRuleCounts={previousRuleCounts}
+          findings={report.findings ?? []}
+          worstPages={report.worstPages ?? []}
+          mutedRuleIds={report.mutedRuleIds ?? []}
+        />
       )}
     </div>
   );

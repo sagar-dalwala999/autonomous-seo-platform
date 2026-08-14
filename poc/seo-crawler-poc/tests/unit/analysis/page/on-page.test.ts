@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { onPageRules } from "../../../../src/analysis/rules/page/on-page";
 import { makePage } from "../../../unit/report/fixtures";
 import { makeConfig } from "./testConfig";
+import type { HeadingRecord } from "../../../../src/models/types";
 
 const rule = (id: string) => onPageRules().find((r) => r.meta.id === id)!;
 const config = makeConfig();
@@ -135,5 +136,174 @@ describe("h1-missing / h1-multiple / heading-hierarchy-skip", () => {
     expect(
       rule("heading-hierarchy-skip").evaluate(makePage({ headings: { h1: ["A"], h2: ["B"], h3: ["C"] } }), config),
     ).toEqual([]);
+  });
+});
+
+describe("heading-hierarchy-skip over the full document-order sequence", () => {
+  const heading = (level: HeadingRecord["level"], index: number, text = `H${level}`): HeadingRecord => ({
+    level,
+    text,
+    index,
+    inMain: true,
+  });
+  const withHeadings = (levels: HeadingRecord["level"][]) =>
+    makePage({
+      structure: {
+        headings: levels.map((l, i) => heading(l, i)),
+        paragraphs: 1,
+        lists: { ordered: 0, unordered: 0, definition: 0 },
+        tables: { total: 0, withTh: 0, withCaption: 0 },
+        codeBlocks: 0,
+        blockquotes: 0,
+        landmarks: ["main"],
+      },
+    });
+
+  it("catches an H2-to-H4 skip the h1/h2/h3 buckets cannot see", () => {
+    const issues = rule("heading-hierarchy-skip").evaluate(withHeadings([1, 2, 4]), config);
+    expect(issues).toHaveLength(1);
+    expect(issues![0]!.message).toContain("H2 to H4");
+    expect(issues![0]!.evidence[0]!.field).toBe("structure.headings[2].level");
+  });
+
+  it("catches a document whose first heading is below H2 (matches visioninfotech.net, outline starts at H5)", () => {
+    const issues = rule("heading-hierarchy-skip").evaluate(withHeadings([5, 5, 2, 1]), config);
+    expect(issues).toHaveLength(1);
+    expect(issues![0]!.message).toContain("H1 to H5");
+  });
+
+  it("still catches the H3-with-no-H2 case (matches seeded /blog/trail-nutrition)", () => {
+    expect(rule("heading-hierarchy-skip").evaluate(withHeadings([1, 3, 3, 3]), config)).toHaveLength(1);
+  });
+
+  it("does not fire on a well-formed outline, nor on levels stepping back up", () => {
+    expect(rule("heading-hierarchy-skip").evaluate(withHeadings([1, 2, 3, 2, 3, 4, 2]), config)).toEqual([]);
+    expect(rule("heading-hierarchy-skip").evaluate(withHeadings([]), config)).toEqual([]);
+  });
+});
+
+describe("heading-empty", () => {
+  const heading = (level: HeadingRecord["level"], index: number, text: string): HeadingRecord => ({ level, text, index, inMain: true });
+  const withHeadings = (entries: [HeadingRecord["level"], string][]) =>
+    makePage({
+      structure: {
+        headings: entries.map(([l, t], i) => heading(l, i, t)),
+        paragraphs: 1,
+        lists: { ordered: 0, unordered: 0, definition: 0 },
+        tables: { total: 0, withTh: 0, withCaption: 0 },
+        codeBlocks: 0,
+        blockquotes: 0,
+        landmarks: ["main"],
+      },
+    });
+
+  it("fires when a heading in the document-order sequence has no text", () => {
+    const issues = rule("heading-empty").evaluate(withHeadings([[1, "Title"], [2, ""]]), config);
+    expect(issues).toHaveLength(1);
+    expect(issues![0]!.severity).toBe("notice");
+    expect(issues![0]!.evidence[0]!.field).toBe("structure.headings[1].text");
+  });
+
+  it("does not fire when every heading has text", () => {
+    expect(rule("heading-empty").evaluate(withHeadings([[1, "Title"], [2, "Section"]]), config)).toEqual([]);
+  });
+
+  it("skips (returns null) when structure.headings was never captured", () => {
+    expect(rule("heading-empty").evaluate(makePage(), config)).toBeNull();
+  });
+});
+
+describe("title-h1-mismatch", () => {
+  it("fires when title and H1 share no significant word", () => {
+    const issues = rule("title-h1-mismatch").evaluate(
+      makePage({ title: "Backpacking Gear Reviews", headings: { h1: ["Contact Our Support Team"], h2: [], h3: [] } }),
+      config,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues![0]!.severity).toBe("notice");
+  });
+
+  it("does not fire when title and H1 share a significant word", () => {
+    expect(
+      rule("title-h1-mismatch").evaluate(
+        makePage({ title: "Backpacking Gear Reviews", headings: { h1: ["Best Backpacking Gear for 2026"], h2: [], h3: [] } }),
+        config,
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not fire when there is no H1 or no title (too little to judge)", () => {
+    expect(rule("title-h1-mismatch").evaluate(makePage({ title: "X", headings: { h1: [], h2: [], h3: [] } }), config)).toEqual([]);
+    expect(rule("title-h1-mismatch").evaluate(makePage({ title: null, headings: { h1: ["Y"], h2: [], h3: [] } }), config)).toEqual([]);
+  });
+});
+
+describe("long-content-no-subheadings", () => {
+  it("fires on long content with at most one subheading", () => {
+    const issues = rule("long-content-no-subheadings").evaluate(
+      makePage({ content: { text: "word ".repeat(400).trim(), wordCount: 400, contentHash: "a" }, headings: { h1: ["Title"], h2: [], h3: [] } }),
+      config,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues![0]!.threshold).toContain("wordCount 400 > min 300");
+  });
+
+  it("does not fire when there are 2+ subheadings", () => {
+    const issues = rule("long-content-no-subheadings").evaluate(
+      makePage({
+        content: { text: "word ".repeat(400).trim(), wordCount: 400, contentHash: "b" },
+        headings: { h1: ["Title"], h2: ["Section one", "Section two"], h3: [] },
+      }),
+      config,
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it("does not fire under the word-count floor", () => {
+    const issues = rule("long-content-no-subheadings").evaluate(
+      makePage({ content: { text: "short", wordCount: 50, contentHash: "c" }, headings: { h1: ["Title"], h2: [], h3: [] } }),
+      config,
+    );
+    expect(issues).toEqual([]);
+  });
+});
+
+describe("Screaming Frog parity checks", () => {
+  const longTitle = "A title that is comfortably past the thirty character minimum";
+
+  it("url-too-long fires past 115 characters and not before", () => {
+    const short = makePage({ url: "https://x.test/fine", normalizedUrl: "https://x.test/fine" });
+    expect(rule("url-too-long").evaluate(short, config)).toHaveLength(0);
+
+    const long = `https://x.test/${"a".repeat(120)}`;
+    const issues = rule("url-too-long").evaluate(makePage({ url: long, normalizedUrl: long }), config)!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.threshold).toContain("max 115");
+  });
+
+  it("title-too-short fires on pixel width even when the character count passes", () => {
+    // Narrow glyphs: enough characters, too few pixels to fill the SERP slot.
+    const page = makePage({ title: longTitle, pixelWidths: { titlePx: 150, metaDescriptionPx: null } });
+    const issues = rule("title-too-short").evaluate(page, config)!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.threshold).toContain("px");
+  });
+
+  it("title-too-short stays quiet when both character count and pixel width pass", () => {
+    const page = makePage({ title: longTitle, pixelWidths: { titlePx: 420, metaDescriptionPx: null } });
+    expect(rule("title-too-short").evaluate(page, config)).toHaveLength(0);
+  });
+
+  it("meta-description-too-short fires on pixel width even when the character count passes", () => {
+    const desc = "A meta description that clears the seventy character minimum comfortably enough.";
+    const page = makePage({ metaDescription: desc, pixelWidths: { titlePx: null, metaDescriptionPx: 300 } });
+    const issues = rule("meta-description-too-short").evaluate(page, config)!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.threshold).toContain("px");
+  });
+
+  it("does not fire either pixel rule when pixel width was never captured", () => {
+    const page = makePage({ title: longTitle, pixelWidths: undefined });
+    expect(rule("title-too-short").evaluate(page, config)).toHaveLength(0);
   });
 });

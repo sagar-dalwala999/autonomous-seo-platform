@@ -7,7 +7,6 @@ import { KpiStripView } from "@/components/overview/kpi-strip";
 import { HexMatrix } from "@/components/charts/hex-matrix";
 import { DotMatrixTimeline } from "@/components/charts/dot-matrix-timeline";
 import { WorkQueueTable } from "@/components/overview/work-queue-table";
-import { RunSelector } from "@/components/overview/run-selector";
 import { FilterChips } from "@/components/overview/filter-chips";
 import { OverviewTopbarActions } from "@/components/overview/overview-topbar-actions";
 import { NewCrawlTriggerButton } from "@/components/overview/new-crawl-trigger-button";
@@ -20,8 +19,7 @@ async function loadPreviousRun(previousRunId: string | undefined) {
   if (!previousRunId) return { report: null, pages: null };
   const { report } = await getRun(previousRunId);
   if (!report) return { report: null, pages: null };
-  const { items } = await getPages(previousRunId);
-  return { report, pages: items };
+  return { report, pages: await getPages(previousRunId) };
 }
 
 export default async function OverviewPage({ searchParams }: Props) {
@@ -52,7 +50,7 @@ export default async function OverviewPage({ searchParams }: Props) {
   const currentIndex = runs.findIndex((r) => r.runId === runId);
   const previousRunItem = currentIndex >= 0 ? runs[currentIndex + 1] : undefined;
 
-  const [{ report, blocked, failures }, { items: pages }] = await Promise.all([getRun(runId), getPages(runId)]);
+  const [{ report, blocked, failures }, pages] = await Promise.all([getRun(runId), getPages(runId)]);
 
   if (!report) {
     return (
@@ -74,10 +72,8 @@ export default async function OverviewPage({ searchParams }: Props) {
     <div className="space-y-6">
       <OverviewTopbarActions report={report} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <RunSelector runs={runs} currentRunId={runId} />
-        <FilterChips report={report} runId={runId} />
-      </div>
+      {/* Run selector now lives in the topbar (components/shell/topbar.tsx) so it's on every data page. */}
+      <FilterChips report={report} runId={runId} pages={pages} failureCount={failures.length} blockedCount={blocked.length} />
 
       <ActionCards report={report} runId={runId} />
 

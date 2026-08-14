@@ -1,0 +1,35 @@
+{
+  "slice": "dash-3screens (Activity + All Measurements + What the site tells crawlers)",
+  "started_at": "2026-08-13T13:40:00Z",
+  "ended_at": "2026-08-13T14:20:00Z",
+  "status": "completed",
+  "owns": [
+    "app/activity/**",
+    "app/measurements/**",
+    "app/sitefiles/**",
+    "components/activity/**",
+    "components/measurements/**",
+    "components/sitefiles/**",
+    "lib/measurements-view.ts",
+    "lib/measurements-drilldown.ts",
+    "lib/sitefiles-lines.ts",
+    "lib/events-view.ts"
+  ],
+  "additive_shared_edit": "components/shell/nav-config.ts (3 nav entries + 3 ROUTE_TITLES, appended only, same precedent as A5's /issues entry)",
+  "do_not_touch_confirmed": ["app/api/**", "components/ui/**", "app/globals.css", "app/layout.tsx", "app/issues/**", "app/queue/**", "seo-crawler-poc/src/**"],
+  "done_so_far": [
+    "Activity screen: real SSE (durable + synthetic fallback), custom virtualization (verified 36 DOM rows at 3,001 events), auto-scroll/pause/resume, capped-backoff reconnect, kind+status+search filters.",
+    "All Measurements: shape-adapter rendering legacy shape honestly today, auto-upgrades to real v2 31-card grid once /api/crawls/:id/measurements is wired (not this slice's file); in-page drill-down SlideOver for the 10 ids with guaranteed exact parity to compute.ts.",
+    "Sitefiles: 13-agent AI-crawler table, all 4+1 verdict buckets always shown, matched-rule source line numbers, honest llms.txt panel.",
+    "2 real bugs found and fixed, both within own files: events-log.ts kind/type field rename (re-read before building), and the already-finished-run SSE hang (client-side alreadyTerminal() skip).",
+    "1 real correctness gap self-caught and fixed before shipping: 2 drilldown ids (broken-pages, images-without-alt) removed after cross-checking compute.ts line-by-line found they could not guarantee exact-count parity.",
+    "tsc clean, lint clean (own files), build clean. Both themes screenshotted for all 3 screens in qa-screenshots/.",
+    "Cleaned up: temp qa-virtualization-test fixture deleted, verification server (port 3901) stopped, shared port 3100 confirmed untouched throughout."
+  ],
+  "next_step": "None — slice complete. Only remaining external dependency: a sibling wiring /api/crawls/:id/measurements to the new computeMeasurements() layer, at which point the measurements screen upgrades automatically with zero changes needed here.",
+  "dead_ends": [
+    {"tried": "Fetching computeMeasurements() directly via cross-package import from seo-crawler-poc/src", "why_it_failed": "Explicitly out of scope (do-not-touch boundary) and architecturally risky (no existing cross-package import pattern in this codebase, TS project boundary not configured for it) — used the documented API endpoint contract instead with a shape-adapter."},
+    {"tried": "Mapping measurement drill-downs onto /pages explorer's existing status/rendered/depth URL params", "why_it_failed": "Only 2 of 31 ids map exactly; the rest would silently disagree with the card's own count (the exact bug class the brief calls out) — built an in-page SlideOver drill-down instead, computed server-side with guaranteed parity."},
+    {"tried": "Relying on the shared Playwright MCP browser for QA screenshots", "why_it_failed": "A concurrent sibling agent was actively driving the same browser session in real time — tabs got hijacked/closed mid-verification repeatedly. Switched to claude-in-chrome's isolated MCP tab group."}
+  ]
+}

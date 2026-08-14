@@ -26,7 +26,20 @@ const STORAGE_ROOT = process.env.CRAWLER_STORAGE_DIR
 
 const RUNS_DIR = path.join(STORAGE_ROOT, "runs");
 
-export type CrawlState = "running" | "done" | "failed";
+export type CrawlState = "running" | "done" | "failed" | "cancelled";
+
+/** Contract mirrors CrawlAuth/CrawlSafety in ../seo-crawler-poc/src/models/types.ts exactly. */
+export interface CrawlAuthInput {
+  basic: { username: string; password: string } | null;
+  cookie: string | null;
+  headers: Record<string, string>;
+}
+
+export interface CrawlSafetyInput {
+  denyLogout: boolean;
+  denyDestructive: boolean;
+  excludePatterns: string[];
+}
 
 export interface CrawlStatus {
   runId: string;
@@ -37,7 +50,10 @@ export interface CrawlStatus {
   maxDepth: number | null;
   respectRobots: boolean;
   render: "auto" | "never" | "always";
+  screenshots: boolean;
   aliases: string[];
+  /** Method only — never the credential values. See "credential hygiene" note in startCrawl. */
+  authMethod: "none" | "basic" | "cookie" | "header";
   startedAt: string;
   endedAt: string | null;
   exitCode: number | null;
@@ -50,7 +66,13 @@ export interface StartCrawlInput {
   maxDepth?: number | null;
   respectRobots?: boolean;
   render?: "auto" | "never" | "always";
+  /** --screenshots. Off by default: it forces a browser render on every page, not just JS ones. */
+  screenshots?: boolean;
   aliases?: string[];
+  /** Credentials for protected routes; null/undefined = anonymous crawl. Never persisted — see startCrawl. */
+  auth?: CrawlAuthInput | null;
+  /** Guard rails; only meaningful when auth is present. */
+  safety?: CrawlSafetyInput | null;
 }
 
 export class CrawlConflictError extends Error {
@@ -169,13 +191,58 @@ export async function reportReady(runId: string): Promise<boolean> {
   return fileExists(path.join(RUNS_DIR, runId, "report.json"));
 }
 
+/** authMethod is derived, never client-supplied — it's the single source of truth for which
+ *  branch of CrawlAuthInput is populated, so the display metadata in CrawlStatus can't drift
+ *  from what actually got sent to the CLI. */
+function deriveAuthMethod(auth: CrawlAuthInput | null | undefined): "none" | "basic" | "cookie" | "header" {
+  if (!auth) return "none";
+  if (auth.basic) return "basic";
+  if (auth.cookie) return "cookie";
+  if (Object.keys(auth.headers ?? {}).length > 0) return "header";
+  return "none";
+}
+
+/** Server-side mirror of the client's validateAuth in app/new-crawl/page.tsx — never trust the client alone. */
+function validateAuth(auth: CrawlAuthInput | null | undefined): CrawlAuthInput | null {
+  if (!auth) return null;
+  const method = deriveAuthMethod(auth);
+  if (method === "none") return null;
+
+  if (method === "basic") {
+    const username = auth.basic!.username?.trim();
+    const password = auth.basic!.password;
+    if (!username || !password) throw new CrawlValidationError("Basic auth requires both a username and a password.");
+    return { basic: { username, password }, cookie: null, headers: {} };
+  }
+  if (method === "cookie") {
+    const cookie = auth.cookie!.trim();
+    if (!cookie) throw new CrawlValidationError("Cookie auth requires a non-empty Cookie header value.");
+    return { basic: null, cookie, headers: {} };
+  }
+  const entries = Object.entries(auth.headers ?? {}).filter(([k, v]) => k.trim() && v);
+  if (entries.length === 0) throw new CrawlValidationError("Custom header auth requires a header name and value.");
+  return { basic: null, cookie: null, headers: Object.fromEntries(entries) };
+}
+
+function validateSafety(safety: CrawlSafetyInput | null | undefined, authActive: boolean): CrawlSafetyInput | null {
+  if (!authActive) return null;
+  return {
+    denyLogout: safety?.denyLogout ?? true,
+    denyDestructive: safety?.denyDestructive ?? true,
+    excludePatterns: (safety?.excludePatterns ?? []).map((p) => p.trim()).filter(Boolean),
+  };
+}
+
 function validate(input: StartCrawlInput): {
   url: URL;
   maxPages: number;
   maxDepth: number | null;
   respectRobots: boolean;
   render: "auto" | "never" | "always";
+  screenshots: boolean;
   aliases: string[];
+  auth: CrawlAuthInput | null;
+  safety: CrawlSafetyInput | null;
 } {
   if (!input.startUrl || typeof input.startUrl !== "string") {
     throw new CrawlValidationError("startUrl is required.");
@@ -211,14 +278,27 @@ function validate(input: StartCrawlInput): {
 
   const aliases = (input.aliases ?? []).map((h) => h.trim()).filter(Boolean);
 
-  return { url, maxPages, maxDepth, respectRobots: input.respectRobots ?? true, render, aliases };
+  const auth = validateAuth(input.auth);
+  const safety = validateSafety(input.safety, auth !== null);
+
+  return {
+    url,
+    maxPages,
+    maxDepth,
+    respectRobots: input.respectRobots ?? true,
+    render,
+    screenshots: input.screenshots === true,
+    aliases,
+    auth,
+    safety,
+  };
 }
 
 export async function startCrawl(input: StartCrawlInput): Promise<CrawlStatus> {
   const running = await findRunningCrawl();
   if (running) throw new CrawlConflictError(running);
 
-  const { url, maxPages, maxDepth, respectRobots, render, aliases } = validate(input);
+  const { url, maxPages, maxDepth, respectRobots, render, screenshots, aliases, auth, safety } = validate(input);
 
   const isLocal = url.hostname === "localhost" || /^127\./.test(url.hostname);
   const rps = isLocal ? 10 : 2;
@@ -241,8 +321,22 @@ export async function startCrawl(input: StartCrawlInput): Promise<CrawlStatus> {
     "storage",
   ];
   if (!respectRobots) args.push("--no-robots");
+  if (screenshots) args.push("--screenshots");
   if (aliases.length > 0) args.push("--alias", aliases.join(","));
   if (maxDepth !== null) args.push("--max-depth", String(maxDepth));
+
+  // Credential hygiene: these values only ever flow into `args`, handed straight to spawn()'s
+  // argv array below — never console.log'd, never JSON.stringify'd into status/log files. See
+  // writeStatus() and CrawlStatus.authMethod (method name only, no secret values).
+  if (auth?.basic) args.push("--basic-auth", `${auth.basic.username}:${auth.basic.password}`);
+  if (auth?.cookie) args.push("--cookie", auth.cookie);
+  if (auth) for (const [name, value] of Object.entries(auth.headers)) args.push("--header", `${name}: ${value}`);
+  if (safety) {
+    // CLI takes ONE --exclude flag as a comma-separated list (src/index.ts: values.exclude.split(",")),
+    // not repeated flags — repeating it would silently drop all but the last pattern.
+    if (safety.excludePatterns.length > 0) args.push("--exclude", safety.excludePatterns.join(","));
+    if (!safety.denyLogout && !safety.denyDestructive) args.push("--no-safety");
+  }
 
   await mkdir(path.join(RUNS_DIR, runId), { recursive: true });
   const fd = openSync(logPath(runId), "a");
@@ -273,7 +367,9 @@ export async function startCrawl(input: StartCrawlInput): Promise<CrawlStatus> {
     maxDepth,
     respectRobots,
     render,
+    screenshots,
     aliases,
+    authMethod: deriveAuthMethod(auth),
     startedAt: new Date().toISOString(),
     endedAt: null,
     exitCode: null,
@@ -281,13 +377,25 @@ export async function startCrawl(input: StartCrawlInput): Promise<CrawlStatus> {
   await writeStatus(status);
 
   child.on("exit", (code) => {
-    void writeStatus({
-      ...status,
-      state: code === 0 || code === 2 ? "done" : "failed",
-      endedAt: new Date().toISOString(),
-      exitCode: code,
-    });
-    if (code === 0 || code === 2) spawnAnalyze(runId);
+    void (async () => {
+      // Races lib/crawl-control.ts's cancelCrawl(), which kills this same pid: taskkill/SIGTERM
+      // returning does not mean this "exit" event has already fired, so whichever write lands
+      // last wins with no ordering guarantee. Re-read the live file rather than trusting the
+      // `status` closure — if cancelCrawl already recorded "cancelled", a killed process legitimately
+      // exiting non-zero must not clobber that back to a plain "failed" (and silently drop the note).
+      const current = await readStatus(runId);
+      if (current?.state === "cancelled") {
+        await writeStatus({ ...current, exitCode: code });
+        return;
+      }
+      await writeStatus({
+        ...status,
+        state: code === 0 || code === 2 ? "done" : "failed",
+        endedAt: new Date().toISOString(),
+        exitCode: code,
+      });
+      if (code === 0 || code === 2) spawnAnalyze(runId);
+    })();
   });
   child.unref();
 

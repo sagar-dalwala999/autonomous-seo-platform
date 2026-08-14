@@ -154,3 +154,94 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * Scrollbars — token-driven so both themes get a deliberate thumb color instead of the OS
+ * default. Spec says scrollbar-width/scrollbar-color are inherited, but real-world testing here
+ * showed <body> computing "auto" even with :root set to "thin" (Tailwind's preflight resets
+ * enough properties on `*` that inheritance can't be trusted) — applying via the universal
+ * selector instead so every element gets it directly, not through inheritance.
+ * Firefox re-evaluates `scrollbar-color` on `:hover` of the element that owns the scrollbar
+ * (hovering the thumb counts as hovering that element), so scoping the brighter hover color to
+ * Tailwind's own `.overflow-y-auto`/`.overflow-auto`/`.overflow-x-auto` utility classes reaches
+ * every real scroll region in this codebase without per-component edits.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.overflow-y-auto,
+.overflow-auto {
+  /* Axis-specific on purpose: plain `overscroll-behavior: contain` sets BOTH axes, so a
+     horizontal-only scroller (every table is wrapped in .overflow-x-auto) swallowed vertical
+     wheel events and the page stopped scrolling with the pointer over a table. */
+  overscroll-behavior-y: contain;
+}
+
+.overflow-x-auto,
+.overflow-auto {
+  overscroll-behavior-x: contain;
+}
+
+.overflow-y-auto:hover,
+.overflow-auto:hover,
+.overflow-x-auto:hover {
+  scrollbar-color: var(--text-faint) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-faint);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Login hex field: continuous "drift" — a lit hex hands its colour to an empty neighbour,
+   forever (see components/auth/AuthVisual.tsx). JS mutates fill/opacity directly on the ~20
+   cells touched per tick; this transition is what turns that into a 900ms fade on both ends
+   of a handoff, instead of an instant color snap. */
+.auth-hex {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: fill 900ms ease, opacity 900ms ease;
+}
+
+/* Frosted panel carrying the login copy. Currently unused — the copy is commented out in
+   AuthVisual.tsx so the panel is a pure honeycomb field — kept so restoring the copy doesn't
+   require rewriting this. Falls back to a near-opaque surface where backdrop-filter is
+   unsupported, so the text never sits on bare hexes. */
+.auth-glass {
+  background: color-mix(in oklab, var(--bg-elevated) 96%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  box-shadow: 0 1px 0 0 color-mix(in oklab, var(--foreground) 8%, transparent) inset,
+              0 18px 40px -28px rgb(0 0 0 / 0.55);
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .auth-glass {
+    background: color-mix(in oklab, var(--bg-elevated) 58%, transparent);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+    backdrop-filter: blur(22px) saturate(150%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-hex { transition: none; }
+}

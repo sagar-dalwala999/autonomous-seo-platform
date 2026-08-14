@@ -20,8 +20,43 @@ export interface AnalysisConfig {
     lowTextRatio: number;
     slowPageMs: number;
     redirectChainMax: number;
+    /** @deprecated Superseded by nearDupSimilarity (slice C3: real MinHash/Jaccard similarity).
+     * Left in place, unread by near-duplicate-content — another slice/config may still reference it. */
     nearDupWordCountDeltaPct: number;
+    /** Jaccard similarity threshold (0..1) near-duplicate-content clusters at (slice C3). Optional
+     * so pre-C3 configs still validate; the rule falls back to similarity.ts's own default (0.75). */
+    nearDupSimilarity?: number;
     weakInlinkCount: number;
+    /* Screaming Frog's published limits (verified 2026-08-13). Optional so pre-existing configs
+     * and fixtures still validate; each rule falls back to the constant below. */
+    titleMinPx?: number;
+    descMinPx?: number;
+    urlMaxChars?: number;
+    /** Both are XML sitemap protocol HARD limits — a sitemap over either is invalid, not merely large. */
+    sitemapMaxUrls?: number;
+    sitemapMaxBytes?: number;
+    /** 0..1 share of rendered words that must be JS-only for content-requires-javascript to fire. */
+    jsOnlyContentRatio?: number;
+    /* ── Slice: indexability/http/on-page/redirects/robots/sitemap/links port wave. All optional
+     * so pre-existing configs still validate; each rule falls back to its own local default. ── */
+    /** excessive-links: internal+external link count on one page past which it's flagged. */
+    excessiveLinksCount?: number;
+    /** page-buried-too-deep: crawl.depth past which a page is "buried". */
+    deepPageDepth?: number;
+    /** soft-404: word-count ceiling under which 404-style wording on a 200 is flagged. */
+    soft404MaxWords?: number;
+    /** long-content-no-subheadings: word count past which <=1 subheading is flagged. */
+    longContentNoSubheadingsWords?: number;
+    /** high-empty-anchor-ratio: share (0..1) of a page's links with blank anchor text. */
+    emptyAnchorRatioMax?: number;
+    /** no-compression: htmlBytes floor below which an uncompressed response isn't worth flagging. */
+    noCompressionMinBytes?: number;
+    /* content/structured-data/duplicates/orphans family port wave (data-rules audit). Same
+     * optional + local-default-fallback pattern as the rest of this block. */
+    /** low-readability: Flesch Reading Ease score below which body text is flagged. */
+    fleschReadingEaseMin?: number;
+    /** oversized-html: htmlBytes past which the document itself (not subresources) is flagged. */
+    oversizedHtmlBytes?: number;
   };
 }
 

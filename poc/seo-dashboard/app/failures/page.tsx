@@ -1,11 +1,26 @@
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, ChevronRight, History } from "lucide-react";
-import { resolveRunId, getRun, getPages } from "@/lib/data";
+import { AlertTriangle, CheckCircle2, ChevronRight, History, ShieldAlert } from "lucide-react";
+import { resolveRunId, getRun, getPages, readSkipped } from "@/lib/data";
 import { groupFailuresByClass, findPageIdByUrl } from "@/lib/data-explorer";
+import type { SkippedUrlRecord } from "@/lib/types";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableContainer, TableHead, Th, Tr, Td } from "@/components/ui/table";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+
+const SKIPPED_REASON_ORDER: SkippedUrlRecord["reason"][] = ["logout", "destructive", "user-excluded"];
+const SKIPPED_REASON_LABEL: Record<SkippedUrlRecord["reason"], string> = {
+  logout: "Logout links",
+  destructive: "Destructive links",
+  "user-excluded": "User-excluded patterns",
+};
+
+/** Local to this page (data-explorer.ts is owned by S10 — see its file header). */
+function groupSkippedByReason(items: SkippedUrlRecord[]): { reason: SkippedUrlRecord["reason"]; items: SkippedUrlRecord[] }[] {
+  const map = new Map<SkippedUrlRecord["reason"], SkippedUrlRecord[]>();
+  for (const s of items) map.set(s.reason, [...(map.get(s.reason) ?? []), s]);
+  return SKIPPED_REASON_ORDER.filter((r) => map.has(r)).map((reason) => ({ reason, items: map.get(reason)! }));
+}
 
 interface Props {
   searchParams: Promise<{ run?: string }>;
@@ -19,16 +34,21 @@ export default async function FailuresPage({ searchParams }: Props) {
     return <EmptyState icon={History} title="No crawl runs yet" description="Run a crawl to see failures and blocked URLs here." />;
   }
 
-  const [{ failures, blocked, robots }, { items: pages }] = await Promise.all([getRun(runId), getPages(runId, {})]);
+  const [{ failures, blocked, robots }, pages, skipped] = await Promise.all([
+    getRun(runId),
+    getPages(runId),
+    readSkipped(runId),
+  ]);
   const groups = groupFailuresByClass(failures);
+  const skippedGroups = groupSkippedByReason(skipped);
   const q = `run=${encodeURIComponent(runId)}`;
 
-  if (failures.length === 0 && blocked.length === 0) {
+  if (failures.length === 0 && blocked.length === 0 && skipped.length === 0) {
     return (
       <EmptyState
         icon={CheckCircle2}
         title="Run is clean"
-        description={`No failures and nothing blocked by robots.txt in run ${runId}.`}
+        description={`No failures, nothing blocked by robots.txt, and nothing skipped for safety in run ${runId}.`}
       />
     );
   }
@@ -133,6 +153,66 @@ export default async function FailuresPage({ searchParams }: Props) {
           )}
         </div>
       </details>
+
+      <section>
+        <h2 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+          <ShieldAlert size={14} strokeWidth={1.75} className="text-warn" aria-hidden="true" />
+          Skipped for safety
+        </h2>
+        {skippedGroups.length === 0 ? (
+          <p className="text-sm text-faint">No URLs were skipped in this run.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {skippedGroups.map((g) => (
+              <details key={g.reason} className="group rounded-card border border-border bg-card" open={g.items.length <= 8}>
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3.5 text-sm font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
+                  <ChevronRight
+                    size={14}
+                    strokeWidth={2}
+                    className="shrink-0 text-faint transition-transform duration-150 group-open:rotate-90"
+                    aria-hidden="true"
+                  />
+                  {SKIPPED_REASON_LABEL[g.reason]}
+                  <Badge tone="warn">{g.items.length}</Badge>
+                </summary>
+                <div className="border-t border-border">
+                  <TableContainer className="rounded-none border-0">
+                    <TableHead>
+                      <Th>URL</Th>
+                      <Th>Matched pattern</Th>
+                      <Th>Found on</Th>
+                    </TableHead>
+                    <tbody>
+                      {g.items.map((s, i) => {
+                        const foundOnPageId = s.foundOn ? findPageIdByUrl(pages, s.foundOn) : null;
+                        return (
+                          <Tr key={`${s.url}-${i}`}>
+                            <Td className="max-w-xs truncate normal-case">{s.url}</Td>
+                            <Td className="max-w-[16ch] truncate normal-case text-secondary">{s.matchedPattern}</Td>
+                            <Td className="max-w-xs truncate normal-case">
+                              {s.foundOn ? (
+                                foundOnPageId ? (
+                                  <Link href={`/pages/${foundOnPageId}?${q}`} className="text-primary underline underline-offset-2">
+                                    {s.foundOn}
+                                  </Link>
+                                ) : (
+                                  s.foundOn
+                                )
+                              ) : (
+                                <span className="text-faint">—</span>
+                              )}
+                            </Td>
+                          </Tr>
+                        );
+                      })}
+                    </tbody>
+                  </TableContainer>
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section>
         <h2 className="mb-2 text-sm font-semibold text-foreground">Robots.txt evidence</h2>

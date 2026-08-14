@@ -16,6 +16,22 @@ export function statusClassFor(statusCode: number | null): StatusClass | null {
   return null;
 }
 
+export type StatusCounts = Record<"2xx" | "3xx" | "4xx" | "5xx", number>;
+
+/** Buckets crawled pages by final HTTP status class, from the same `pages` array (real page
+ *  records only) that /pages?status=X filters over — this is the single source of truth for the
+ *  Overview status chips, so a chip's count and its destination's row count can't diverge again.
+ *  Excludes failures that never produced a page record (e.g. a request blocked after retries) —
+ *  those live in failures.json and are only ever shown at /failures, never at /pages. */
+export function buildStatusCounts(pages: CrawledPageWithId[]): StatusCounts {
+  const counts: StatusCounts = { "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0 };
+  for (const p of pages) {
+    const cls = statusClassFor(p.statusCode);
+    if (cls && cls !== "blocked") counts[cls]++;
+  }
+  return counts;
+}
+
 export interface HexCell {
   key: string;
   statusClass: StatusClass | "empty";

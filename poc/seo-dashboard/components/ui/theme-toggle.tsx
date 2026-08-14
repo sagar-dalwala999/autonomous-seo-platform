@@ -17,6 +17,7 @@ export function ThemeToggle() {
 
   useEffect(() => {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate post-mount upgrade from the SSR-safe "system" default above, not derivable at render time (same pattern as components/preview/page-replay.tsx)
     if (isThemePreference(stored)) setPref(stored);
   }, []);
 
