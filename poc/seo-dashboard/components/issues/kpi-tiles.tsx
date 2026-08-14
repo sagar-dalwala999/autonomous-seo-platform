@@ -7,9 +7,11 @@ export interface KpiTileSpec {
   label: string;
   /** Tiny status dot beside the caption — the app's established micro-accent, not a line. */
   dot?: "bad" | "warn" | "ok" | "neutral";
-  /** Present on tiles that filter the list below them (severity, auto-fixable). */
+  /** Present on tiles that do something when clicked (filter the list or switch view). */
   onClick?: () => void;
   active?: boolean;
+  /** Word shown under an active tile — "filtering" for list filters, "viewing" for view switches. */
+  activeLabel?: string;
 }
 
 const DOT_CLASSES = { bad: "bg-danger", warn: "bg-warn", ok: "bg-ok", neutral: "bg-faint" };
@@ -50,7 +52,7 @@ export function KpiTiles({ items }: { items: KpiTileSpec[] }) {
           >
             {body}
             {t.active && (
-              <span className="mt-1 block text-[10px] font-semibold uppercase tracking-wide text-primary">filtering</span>
+              <span className="mt-1 block text-[10px] font-semibold uppercase tracking-wide text-primary">{t.activeLabel ?? "filtering"}</span>
             )}
           </button>
         );

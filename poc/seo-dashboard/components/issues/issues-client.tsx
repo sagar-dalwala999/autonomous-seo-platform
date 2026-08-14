@@ -100,6 +100,8 @@ export function IssuesClient({
   const findingsByRule = useMemo(() => new Map(findings.map((f) => [f.ruleId, f])), [findings]);
 
   const group = (["area", "priority", "worst", "since"].find((v) => v === searchParams.get("view")) ?? "area") as IssueGroup;
+  // "worst" view has two page-first modes: the harm ranking (default) or the clean-pages listing
+  const worstMode = searchParams.get("worst") === "clean" ? "clean" : "issues";
   const show = ["failing", "all", "passed"].includes(searchParams.get("show") ?? "") ? (searchParams.get("show") as string) : "failing";
   const activeSeverity = SEVERITIES.includes(searchParams.get("severity") as IssueSeverity) ? (searchParams.get("severity") as IssueSeverity) : null;
   const activeCategory = searchParams.get("category");
@@ -155,16 +157,19 @@ export function IssuesClient({
   const acceptedIssues = useMemo(() => filtered.filter((i) => mutedRuleIdSet.has(i.ruleId)), [filtered, mutedRuleIdSet]);
 
   // distinct pages touched by ALL unmuted findings (filter-independent, like the reference's
-  // totals.uniquePagesAffected) — pageId/url plus any secondary pageIds in evidence
+  // totals.uniquePagesAffected) — pageId/url plus any secondary pageIds in evidence. The same
+  // key set backs both the "pages with issues" tile and the clean-pages listing, so a page can
+  // never count as both.
   const allIssuesUnmuted = useMemo(() => issues.filter((i) => !mutedRuleIdSet.has(i.ruleId)), [issues, mutedRuleIdSet]);
-  const uniquePagesAffected = useMemo(() => {
+  const affectedPageKeys = useMemo(() => {
     const seen = new Set<string>();
     for (const i of allIssuesUnmuted) {
       seen.add(i.pageId ?? i.url ?? `${i.ruleId}-site`);
       for (const e of i.evidence) if (e.pageId) seen.add(e.pageId);
     }
-    return seen.size;
+    return seen;
   }, [allIssuesUnmuted]);
+  const uniquePagesAffected = affectedPageKeys.size;
 
   /* ── groups ─────────────────────────────────────────────────────────────────────────── */
   const failingGroups = useMemo(() => groupIssuesByRule(activeIssues, pagesAnalyzed), [activeIssues, pagesAnalyzed]);
@@ -244,6 +249,12 @@ export function IssuesClient({
 
   const autoFixable = fixPlan?.totalChanges ?? automation?.counts["auto-safe"] ?? 0;
   const cleanPages = Math.max(0, pagesAnalyzed - uniquePagesAffected);
+  // the pages behind the "clean pages" number — every crawled page not touched by an unmuted
+  // finding (keys match affectedPageKeys so the two tiles always sum to the site)
+  const cleanPageEntries = useMemo(
+    () => pageIdToUrlEntries.filter(([pageId, url]) => !affectedPageKeys.has(pageId) && !affectedPageKeys.has(url)),
+    [pageIdToUrlEntries, affectedPageKeys],
+  );
   const filtersActive = show !== "failing" || activeSeverity !== null || activeAutomation !== null;
 
   const clearAll = () => updateParams({ show: null, severity: null, fixType: null, q: null });
@@ -256,12 +267,24 @@ export function IssuesClient({
     dot: sev === "error" ? "bad" : sev === "warning" ? "warn" : "neutral",
   });
 
+  // the two page tiles switch to the page-first (worst) view — "pages with issues" ranks the
+  // pages that have them, "clean pages" lists the pages that don't; clicking the active tile
+  // returns to By area
+  const pageTile = (mode: "issues" | "clean"): Omit<KpiTileSpec, "value" | "label"> => {
+    const active = group === "worst" && worstMode === mode;
+    return {
+      onClick: () => updateParams({ view: active ? null : "worst", worst: active || mode === "issues" ? null : "clean" }),
+      active,
+      activeLabel: "viewing",
+    };
+  };
+
   const kpiTiles: KpiTileSpec[] = [
     { ...sevTile("error"), value: counts.error, label: "critical" },
     { ...sevTile("warning"), value: counts.warning, label: "warnings" },
     { ...sevTile("notice"), value: counts.notice, label: "notices" },
-    { value: uniquePagesAffected.toLocaleString(), label: "pages with issues" },
-    { value: cleanPages.toLocaleString(), label: "clean pages", dot: "ok" },
+    { ...pageTile("issues"), value: uniquePagesAffected.toLocaleString(), label: "pages with issues" },
+    { ...pageTile("clean"), value: cleanPages.toLocaleString(), label: "clean pages", dot: "ok" },
     {
       value: autoFixable,
       label: "auto-fixable changes",
@@ -457,7 +480,33 @@ export function IssuesClient({
       )}
 
       {group === "worst" &&
-        (worstPages.length === 0 ? (
+        (worstMode === "clean" ? (
+          cleanPageEntries.length === 0 ? (
+            <EmptyState icon={FileWarning} title="No clean pages" description="Every page in this run has at least one unfixed issue." />
+          ) : (
+            <>
+              <SectionHeading title="Clean pages" sub="no unfixed issues on these pages" />
+              <TableContainer>
+                <TableHead>
+                  <Th>Page</Th>
+                  <Th>Issues</Th>
+                </TableHead>
+                <tbody>
+                  {cleanPageEntries.map(([pageId, url]) => (
+                    <Tr key={pageId}>
+                      <Td className="max-w-md truncate normal-case">
+                        <a href={`/pages/${pageId}?run=${encodeURIComponent(runId)}`} className="text-primary underline underline-offset-2">
+                          {url}
+                        </a>
+                      </Td>
+                      <Td className="tabular-nums text-ok">0</Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </TableContainer>
+            </>
+          )
+        ) : worstPages.length === 0 ? (
           <EmptyState icon={FileWarning} title="Worst-page ranking not available" description="This run predates the priority engine — reanalyze it to get a real per-page harm ranking." />
         ) : (
           <>

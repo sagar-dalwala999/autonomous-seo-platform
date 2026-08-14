@@ -152,7 +152,7 @@ export function IssuesToolbar({
             aria-pressed={group === g.key}
             onClick={() => onGroup(g.key)}
             className={cn(
-              "rounded-pill px-3 py-1.5 text-xs font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary",
+              "cursor-pointer rounded-pill px-3 py-1.5 text-xs font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary",
               group === g.key ? "bg-primary text-primary-contrast shadow-card" : "text-secondary hover:text-foreground",
             )}
           >

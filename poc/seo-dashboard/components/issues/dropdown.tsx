@@ -65,7 +65,7 @@ export function Dropdown({ value, onChange, options, label, allValue = options[0
         aria-expanded={open}
         onClick={() => setOpen(!open)}
         className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-control border px-2.5 text-xs font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary",
+          "inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-control border px-2.5 text-xs font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-primary",
           active ? "border-primary bg-subtle text-primary" : "border-border bg-subtle text-secondary hover:bg-elevated hover:text-foreground",
         )}
       >
