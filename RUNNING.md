@@ -44,7 +44,42 @@ Real values live in gitignored files. Copies of the shape are committed as `.env
 
 ---
 
-## 1. The fastest path — see the dashboard
+## 1. What actually runs
+
+**Only one long-running service: the dashboard.** Everything else is a CLI or a library.
+
+| Module | Type | How it runs |
+|---|---|---|
+| `poc/seo-dashboard` | **The app — UI *and* API** | `npm run dev` → :3100 |
+| `poc/target-site` | Test fixture to crawl | `npm run dev` → :3000 (optional) |
+| `poc/seo-crawler-poc` | CLI, no server | `npm run crawl` / `analyze` / `diff` / `graph` |
+| `packages/db` | Library + 2 CLIs | `import:legacy`, `prune` — no server |
+
+**There is no separate backend process.** The dashboard's Next.js API routes *are* the backend.
+
+**There is no crawl-worker daemon.** Starting a crawl from the UI makes
+`lib/crawl-runner.ts` `spawn()` the crawler CLI as a child process; `src/queue/` is a library
+consumed in-process. `PLAN-03` specified a separate worker so a crawl that OOMs cannot take the API
+down — that split is **designed but not built**, so today they share a process tree.
+
+## 2. Development mode
+
+```bash
+cd poc/seo-dashboard
+npm run dev          # http://localhost:3100
+```
+
+Optionally, a local site to crawl:
+
+```bash
+cd poc/target-site
+npm run dev          # http://localhost:3000
+```
+
+There are already **125 crawl runs on disk**, so every screen has real data without crawling
+anything first.
+
+## 3. Production mode
 
 ```bash
 cd poc/seo-dashboard
@@ -62,7 +97,7 @@ screen has real data immediately — you do not need to crawl anything first.
 
 ---
 
-## 2. Run a crawl
+## 4. Run a crawl
 
 The test site with deliberately planted SEO defects (29 routes):
 
@@ -96,7 +131,7 @@ Against a real site, just swap the URL. `npm run crawl -- --help` lists every fl
 
 ---
 
-## 3. Analyze a crawl
+## 5. Analyze a crawl
 
 Crawling stores evidence; analysis turns it into findings. The dashboard auto-analyzes UI-started
 crawls, but a CLI crawl needs this step:
@@ -130,7 +165,7 @@ npm run diff  -- --base <ours> --competitor <theirs> # cross-site
 
 ---
 
-## 4. Tests and gates
+## 6. Tests and gates
 
 ```bash
 cd poc/seo-crawler-poc
@@ -158,7 +193,7 @@ analyzed — it reports `1/30 PASS, 29 N/A`. Always read the counts, not the exi
 
 ---
 
-## 5. Database (optional)
+## 7. Database (optional)
 
 The crawler writes flat JSON by default and works fully without Postgres.
 
@@ -184,7 +219,7 @@ Off by default. Flat JSON remains the source of truth either way.
 
 ---
 
-## 6. Ports
+## 8. Ports
 
 | Port | What | Notes |
 |---|---|---|
@@ -196,7 +231,7 @@ If a port is busy, build once and run `npx next start -p <other>`.
 
 ---
 
-## 7. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Cause |
 |---|---|
