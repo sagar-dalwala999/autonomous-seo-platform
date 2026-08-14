@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Globe, Info, Link2, Loader2 } from "lucide-react";
+import { AlertTriangle, Globe, Info, Link2, Loader2, RadioTower, ListTodo } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -13,6 +13,8 @@ import { ScopeCards, type CrawlScope } from "@/components/new-crawl/ScopeCards";
 import { SettingSwitch } from "@/components/new-crawl/SettingSwitch";
 import { AuthSection, type AuthMethod } from "@/components/new-crawl/AuthSection";
 import { ProgressPanel } from "@/components/new-crawl/ProgressPanel";
+import { ActivityModal } from "@/components/new-crawl/ActivityModal";
+import { QueueModal } from "@/components/new-crawl/QueueModal";
 import type { CancelledCrawlStatus } from "@/lib/crawl-control-client";
 import type { CrawlStatusResponse, PanelState, RenderMode } from "@/components/new-crawl/types";
 
@@ -81,6 +83,8 @@ export default function NewCrawlPage() {
 
   const [runId, setRunId] = useState<string | null>(null);
   const [status, setStatus] = useState<CrawlStatusResponse | null>(null);
+  const [activityModalOpen, setActivityModalOpen] = useState(false);
+  const [queueModalOpen, setQueueModalOpen] = useState(false);
 
   const router = useRouter();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -253,6 +257,12 @@ export default function NewCrawlPage() {
 
   function viewRun() {
     if (!runId) return;
+    router.push(`/pages?run=${encodeURIComponent(runId)}`);
+    router.refresh();
+  }
+
+  function viewDashboard() {
+    if (!runId) return;
     router.push(`/?run=${encodeURIComponent(runId)}`);
     router.refresh();
   }
@@ -261,12 +271,42 @@ export default function NewCrawlPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-lg font-semibold text-foreground">New crawl</h1>
-        <p className="mt-1 max-w-2xl text-sm text-secondary">
-          Paste any website link below. The dashboard spawns a real crawler run against it — same engine as{" "}
-          <code className="rounded border border-border bg-elevated px-1 py-0.5 text-[11px]">npm run crawl</code> — and streams live progress here.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">New crawl</h1>
+          <p className="mt-1 max-w-2xl text-sm text-secondary">
+            Paste any website link below. The dashboard spawns a real crawler run against it — same engine as{" "}
+            <code className="rounded border border-border bg-elevated px-1 py-0.5 text-[11px]">npm run crawl</code> — and streams live progress here.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setActivityModalOpen(true)}
+            className="flex items-center gap-1.5"
+          >
+            <RadioTower
+              size={14}
+              strokeWidth={1.75}
+              className={panelState === "running" ? "text-ok animate-pulse" : "text-primary"}
+            />
+            <span>Activity Stream</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setQueueModalOpen(true)}
+            className="flex items-center gap-1.5"
+          >
+            <ListTodo size={14} strokeWidth={1.75} className="text-primary" />
+            <span>Crawl Queue</span>
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -516,11 +556,27 @@ export default function NewCrawlPage() {
             runId={runId}
             status={status}
             onViewRun={viewRun}
+            onViewDashboard={viewDashboard}
+            onOpenActivity={() => setActivityModalOpen(true)}
+            onOpenQueue={() => setQueueModalOpen(true)}
             onRetry={resetForm}
             onCancelled={handleCancelled}
           />
         </Card>
       </div>
+
+      <ActivityModal
+        open={activityModalOpen}
+        onClose={() => setActivityModalOpen(false)}
+        currentRunId={runId}
+        isCrawling={panelState === "running" || panelState === "starting"}
+      />
+
+      <QueueModal
+        open={queueModalOpen}
+        onClose={() => setQueueModalOpen(false)}
+        onCancelled={handleCancelled}
+      />
     </div>
   );
 }

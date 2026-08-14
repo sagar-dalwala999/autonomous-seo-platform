@@ -15,13 +15,21 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-faint">{children}</p>;
 }
 
-function pathKeyOf(raw: string): string | null {
+function normalizeUrlForComparison(raw: string): string {
   try {
     const u = new URL(raw);
-    return `${u.pathname}${u.search}`;
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    const pathname = u.pathname.replace(/\/+$/, "") || "/";
+    return `${u.protocol}//${host}${pathname}${u.search}`;
   } catch {
-    return null;
+    return raw.trim().replace(/\/+$/, "") || "/";
   }
+}
+
+function isSameUrl(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  if (a.trim() === b.trim()) return true;
+  return normalizeUrlForComparison(a) === normalizeUrlForComparison(b);
 }
 
 // ---- 1. Header band (identity strip — outside the section nav) ----------
@@ -117,9 +125,11 @@ export function CrawlPanel({ page, runId, parentPageId }: { page: CrawledPageWit
 // ---- 2. Metadata ---------------------------------------------------------
 
 export function MetadataPanel({ page }: { page: CrawledPageWithId }) {
-  const canonicalKey = page.canonical ? pathKeyOf(page.canonical) : null;
-  const pageKey = pathKeyOf(page.url);
-  const canonicalMismatch = page.canonical !== null && canonicalKey !== null && canonicalKey !== pageKey;
+  const pageSelfUrl = page.finalUrl ?? page.url;
+  const canonicalMismatch =
+    page.canonical !== null &&
+    !isSameUrl(page.canonical, page.url) &&
+    !isSameUrl(page.canonical, pageSelfUrl);
   const xRobotsTag = page.headers["x-robots-tag"] ?? null;
 
   return (
