@@ -35,7 +35,7 @@ function isSameUrl(a: string | null | undefined, b: string | null | undefined): 
 
 // ---- 1. Header band (identity strip — outside the section nav) ----------
 
-export function HeaderBand({ page, runId }: { page: CrawledPageWithId; runId: string }) {
+export function HeaderBand({ page, runId, pagerank }: { page: CrawledPageWithId; runId: string; pagerank?: number | null }) {
   return (
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -50,6 +50,11 @@ export function HeaderBand({ page, runId }: { page: CrawledPageWithId; runId: st
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {pagerank !== undefined && pagerank !== null && (
+            <Badge tone="ok" title="Internal Link Authority PageRank">
+              PR {pagerank.toFixed(4)}
+            </Badge>
+          )}
           {page.statusCode !== null ? (
             <Badge tone={statusTone(page.statusCode)}>{page.statusCode}</Badge>
           ) : (

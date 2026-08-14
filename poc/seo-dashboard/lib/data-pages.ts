@@ -3,6 +3,7 @@
  *  readAnalysisReport — never re-implements either. */
 import { streamPages } from "./data";
 import { readAnalysisReport } from "./data-issues";
+import { buildGraph } from "./data-graph";
 import type { AnalysisReport, CrawledPageWithId, Issue, IssueSeverity } from "./types";
 
 export interface PageRow {
@@ -18,6 +19,8 @@ export interface PageRow {
   wordCount: number | null;
   issueCounts: Record<IssueSeverity, number>;
   section: string;
+  pagerank: number | null;
+  inlinks: number | null;
 }
 
 function sectionOf(url: string): string {
@@ -68,7 +71,7 @@ export interface PagesFilter {
   section?: string | null;
 }
 
-export type PagesSortKey = "url" | "status" | "depth" | "ttfb" | "words" | "issues";
+export type PagesSortKey = "url" | "status" | "depth" | "ttfb" | "words" | "issues" | "pagerank";
 
 function matchesStatusFilter(status: number | null, filter: string): boolean {
   if (status === null) return false;
@@ -77,7 +80,11 @@ function matchesStatusFilter(status: number | null, filter: string): boolean {
   return `${bucket}xx` === filter;
 }
 
-function toRow(p: CrawledPageWithId, pageIssues: Issue[]): PageRow {
+function toRow(
+  p: CrawledPageWithId,
+  pageIssues: Issue[],
+  graphInfo?: { pagerank: number; inlinks: number },
+): PageRow {
   const counts = emptyCounts();
   for (const i of pageIssues) counts[i.severity]++;
   return {
@@ -88,19 +95,16 @@ function toRow(p: CrawledPageWithId, pageIssues: Issue[]): PageRow {
     title: p.title,
     indexable: isIndexable(p),
     rendered: p.renderedWith,
-    ttfbMs: null, // http.ttfbMs namespace (PLAN-03 §3.5) not yet split out from performance.responseTimeMs in this run's stored records
+    ttfbMs: null,
     responseTimeMs: p.performance.responseTimeMs,
     wordCount: p.content.wordCount,
     issueCounts: counts,
     section: sectionOf(p.url),
+    pagerank: graphInfo?.pagerank ?? null,
+    inlinks: graphInfo?.inlinks ?? null,
   };
 }
 
-/** All filter predicates folded into one check, applied per row as pages stream in — so a
- *  non-matching page's full CrawledPageWithId record is never kept around after this call, only
- *  the (much smaller) PageRow survives for rows that pass. ruleId needs the raw per-page issue
- *  list (not just severity counts), so it takes issueIndex directly rather than reading it off
- *  the row. */
 function matchesFilter(row: PageRow, filter: PagesFilter, pageIssues: Issue[]): boolean {
   if (filter.status && !matchesStatusFilter(row.status, filter.status)) return false;
   if (filter.depth !== undefined && filter.depth !== null && row.depth !== filter.depth) return false;
@@ -119,20 +123,23 @@ function matchesFilter(row: PageRow, filter: PagesFilter, pageIssues: Issue[]): 
   return true;
 }
 
-/** Cursor read: streams pages off disk (lib/data.ts's streamPages) instead of loading the whole
- *  run into memory first — a page's full CrawledPageWithId record (the ~130KB/page cost that
- *  exhausts a 4GB heap around 32k pages) is discarded as soon as its lightweight PageRow is built
- *  and filtered; only matching rows survive to be sorted/paginated by the route handler. Sorting
- *  happens there via lib/api-shared's cmp() so both offset- and cursor-style callers share one
- *  comparator. */
 export async function buildPageRows(runId: string, filter: PagesFilter): Promise<PageRow[]> {
-  const report = await readAnalysisReport(runId);
+  const [report, graphRows] = await Promise.all([
+    readAnalysisReport(runId),
+    buildGraph(runId).catch(() => []),
+  ]);
   const issueIndex = buildIssueIndex(report);
+
+  const graphMap = new Map<string, { pagerank: number; inlinks: number }>();
+  for (const g of graphRows) {
+    graphMap.set(g.pageId, { pagerank: g.pagerank, inlinks: g.inlinks });
+  }
 
   const rows: PageRow[] = [];
   for await (const p of streamPages(runId)) {
     const pageIssues = issueIndex.get(p.pageId) ?? [];
-    const row = toRow(p, pageIssues);
+    const graphInfo = graphMap.get(p.pageId);
+    const row = toRow(p, pageIssues, graphInfo);
     if (matchesFilter(row, filter, pageIssues)) rows.push(row);
   }
   return rows;
@@ -152,5 +159,7 @@ export function sortValueFor(row: PageRow, key: PagesSortKey): string | number |
       return row.wordCount;
     case "issues":
       return row.issueCounts.error * 100 + row.issueCounts.warning * 10 + row.issueCounts.notice;
+    case "pagerank":
+      return row.pagerank;
   }
 }

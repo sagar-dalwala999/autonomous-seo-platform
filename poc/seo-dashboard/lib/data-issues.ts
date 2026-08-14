@@ -6,7 +6,7 @@
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { AnalysisReport, Issue, IssueSeverity } from "./types";
+import type { AnalysisReport, FixPlan, FixPlanItem, Issue, IssueSeverity } from "./types";
 
 const STORAGE_ROOT = process.env.CRAWLER_STORAGE_DIR
   ? path.resolve(process.cwd(), process.env.CRAWLER_STORAGE_DIR)
@@ -22,6 +22,36 @@ export async function readAnalysisReport(runId: string): Promise<AnalysisReport 
     const code = (err as NodeJS.ErrnoException).code;
     if (code !== "ENOENT") console.warn(`[lib/data-issues] malformed issues.json skipped: run ${runId}`);
     return null;
+  }
+}
+
+export async function readFixPlan(runId: string): Promise<FixPlan | null> {
+  try {
+    const text = await readFile(path.join(RUNS_DIR, runId, "fixplan.json"), "utf8");
+    return JSON.parse(text) as FixPlan;
+  } catch {
+    const report = await readAnalysisReport(runId);
+    if (!report) return null;
+    const items: FixPlanItem[] = report.issues.map((issue) => ({
+      rule: issue.ruleId,
+      issue: issue.message,
+      url: issue.url,
+      pageId: issue.pageId,
+      action: issue.howToFix,
+      where: issue.ruleId.startsWith("canonical") || issue.ruleId.startsWith("meta") || issue.ruleId.startsWith("title") ? "HTML <head>" : "Page Markup / Body",
+      change: issue.howToFix,
+      note: "Calculated recommendation from analysis rulebook.",
+    }));
+    return {
+      runId,
+      generatedAt: new Date().toISOString(),
+      applied: false,
+      note: "Automated developer fix-plan derived from analysis engine.",
+      rules: [],
+      totalChanges: items.length,
+      items,
+      skipped: [],
+    };
   }
 }
 

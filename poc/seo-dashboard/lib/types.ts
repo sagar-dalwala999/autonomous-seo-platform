@@ -424,6 +424,19 @@ export interface RuleErrorDetail {
   pageCount: number;
 }
 
+export interface CategoryScore {
+  name: string;
+  categoryKey: string;
+  weight: number;
+  score: number;
+  deductions?: Array<{
+    ruleId: string;
+    points: number;
+    reach: number;
+    reason: string;
+  }>;
+}
+
 export interface AnalysisReport {
   runId: string;
   generatedAt: string;
@@ -435,6 +448,9 @@ export interface AnalysisReport {
   rulesRun: number;
   rulesSkippedDataUnavailable: string[];
   issues: Issue[];
+  categories?: CategoryScore[];
+  grade?: string;
+  band?: string;
   /** Additive priority-slice fields. Optional: runs analyzed before this slice shipped have
    *  issues.json without them — callers must treat absence as "not available", never as empty. */
   findings?: FindingReport[];
@@ -444,4 +460,32 @@ export interface AnalysisReport {
   rulesSkippedDetail?: SkippedRuleDetail[];
   mutedRuleIds?: string[];
   graphAvailable?: boolean;
+}
+
+export interface FixPlanItem {
+  rule: string;
+  issue: string;
+  url: string | null;
+  pageId: string | null;
+  action: string;
+  where: string;
+  change: string | string[];
+  note: string;
+}
+
+export interface FixPlanSkip {
+  rule: string;
+  url: string | null;
+  reason: string;
+}
+
+export interface FixPlan {
+  runId: string;
+  generatedAt: string;
+  applied: boolean;
+  note: string;
+  rules: { id: string; findings: number }[];
+  totalChanges: number;
+  items: FixPlanItem[];
+  skipped: FixPlanSkip[];
 }
