@@ -169,6 +169,7 @@ export function PagesExplorerClient({ rows, runId }: { rows: ExplorerRow[]; runI
         <Td className="text-secondary">{row.renderedWith ?? <span className="text-faint">—</span>}</Td>
         <Td>{row.wordCount ?? <span className="text-faint">—</span>}</Td>
         <Td>{row.responseTimeMs !== null ? `${row.responseTimeMs}ms` : <span className="text-faint">—</span>}</Td>
+        <Td>{row.pagerank !== undefined && row.pagerank !== null ? row.pagerank.toFixed(4) : <span className="text-faint">—</span>}</Td>
       </Tr>
     );
   }
@@ -190,6 +191,9 @@ export function PagesExplorerClient({ rows, runId }: { rows: ExplorerRow[]; runI
       </Th>
       <Th sortDir={sortKey === "responseTime" ? sortDir : null} onSort={() => toggleSort("responseTime")}>
         Response
+      </Th>
+      <Th sortDir={sortKey === "pagerank" ? sortDir : null} onSort={() => toggleSort("pagerank")}>
+        PageRank
       </Th>
     </TableHead>
   );

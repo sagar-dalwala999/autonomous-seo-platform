@@ -151,7 +151,7 @@ export function ImagesClient({ rows, runId }: { rows: ImageRow[]; runId: string 
                   <Td className="tabular-nums">{row.usageCount}</Td>
                   <Td className="max-w-xs truncate normal-case">
                     {row.pages.slice(0, 2).map((p, i) => (
-                      <span key={p.pageId}>
+                      <span key={`${p.pageId}-${i}`}>
                         {i > 0 && ", "}
                         <Link href={`/pages/${p.pageId}?run=${encodeURIComponent(runId)}`} className="text-primary underline underline-offset-2">
                           {p.url}

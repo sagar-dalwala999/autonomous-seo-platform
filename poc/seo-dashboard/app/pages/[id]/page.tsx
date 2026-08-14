@@ -34,6 +34,8 @@ import { FontsPanel } from "@/components/page-detail/fonts-panel";
 import { DocumentStructurePanel } from "@/components/page-detail/document-structure-panel";
 import type { ExtendedCrawledPage } from "@/components/page-detail/types";
 
+import { buildGraph } from "@/lib/data-graph";
+
 interface SearchParams {
   run?: string;
   q?: string;
@@ -89,10 +91,15 @@ export default async function PageDetailPage({ params, searchParams }: Props) {
     section: sp.section ?? null,
   };
 
-  const [allRows, allPages] = await Promise.all([buildExplorerRows(runId), getPages(runId)]);
+  const [allRows, allPages, graphRows] = await Promise.all([
+    buildExplorerRows(runId),
+    getPages(runId),
+    buildGraph(runId).catch(() => []),
+  ]);
   const filtered = filterAndSortRows(allRows, filterParams).filter((r) => r.pageId !== null);
   const currentIndex = filtered.findIndex((r) => r.pageId === id);
   const parentPageId = page.crawl.parentUrl ? findPageIdByUrl(allPages, page.crawl.parentUrl) : null;
+  const pageGraph = graphRows.find((g) => g.pageId === id);
 
   const hasRawHtml = await stat(rawHtmlPath(runId, page.pageId))
     .then(() => true)
@@ -135,7 +142,7 @@ export default async function PageDetailPage({ params, searchParams }: Props) {
         <PageActions page={page} runId={runId} hasRawHtml={hasRawHtml} />
       </Card>
 
-      <HeaderBand page={page} runId={runId} />
+      <HeaderBand page={page} runId={runId} pagerank={pageGraph?.pagerank} />
 
       {/* No items-start here: sticky's containing block is this grid item's own box, and
           items-start would shrink it to the nav's short content height instead of the row's

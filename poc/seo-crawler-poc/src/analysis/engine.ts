@@ -122,51 +122,21 @@ export interface HealthScoreDetail {
   contributions: HealthContribution[];
 }
 
-/** Damage-weighted health, 0-100: a failing check costs weight(worstSeverity) x sqrt(affected/evaluated),
- * and score = 100 x k/(k + damage) — so passed checks cannot dilute failed ones, and a wrecked site still
- * ranks against another instead of pinning to 0. Reach is per-rule, so pages a rule could not read are
- * never counted as passes; only a rule that ran nowhere goes unscored. */
+import { computeTransparentHealthScore } from "./score";
+
+/** Category-weighted transparent health score, 0-100. */
 export function computeHealthScoreDetail(
   issues: Issue[],
   evaluatedPagesByRule: Map<string, number>,
   urlToPageId: Map<string, string>,
   config: AnalysisConfig,
 ): HealthScoreDetail {
-  const weights = healthWeights(config);
-  const affected = new Map<string, Set<string>>();
-  const worst = new Map<string, IssueSeverity>();
-  for (const issue of issues) {
-    if ((evaluatedPagesByRule.get(issue.ruleId) ?? 0) === 0) continue;
-    const pageId = issue.pageId ?? (issue.url ? urlToPageId.get(issue.url) : undefined);
-    // A finding that resolves to no page still counts as affecting one, so site-scope rules
-    // are never silently free.
-    const key = pageId ?? `__unanchored__:${issue.url ?? issue.ruleId}`;
-    const set = affected.get(issue.ruleId) ?? new Set<string>();
-    set.add(key);
-    affected.set(issue.ruleId, set);
-    const prev = worst.get(issue.ruleId);
-    if (prev === undefined || SEVERITY_ORDER[issue.severity] < SEVERITY_ORDER[prev]) {
-      worst.set(issue.ruleId, issue.severity);
-    }
-  }
-
-  const contributions: HealthContribution[] = [];
-  let totalDamage = 0;
-  for (const [ruleId, evaluatedPages] of evaluatedPagesByRule) {
-    if (evaluatedPages === 0) continue; // never ran — no evidence either way
-    const hit = affected.get(ruleId);
-    if (!hit || hit.size === 0) continue; // check passed clean
-    const severity = worst.get(ruleId) ?? "notice";
-    // Clamped: site rules can emit more unanchored findings than there are pages.
-    const reach = Math.min(1, hit.size / evaluatedPages);
-    const damage = weights[severity] * Math.sqrt(reach);
-    totalDamage += damage;
-    contributions.push({ ruleId, severity, affectedPages: hit.size, evaluatedPages, reach, damage });
-  }
-  contributions.sort((a, b) => b.damage - a.damage || (a.ruleId < b.ruleId ? -1 : 1));
-
-  const raw = 100 * (weights.halfScoreDamage / (weights.halfScoreDamage + totalDamage));
-  return { score: Math.round(Math.max(0, Math.min(100, raw)) * 10) / 10, totalDamage, contributions };
+  const result = computeTransparentHealthScore(issues, evaluatedPagesByRule, urlToPageId);
+  return {
+    score: result.score,
+    totalDamage: result.totalDamage,
+    contributions: result.contributions,
+  };
 }
 
 export function computeHealthScore(

@@ -22,6 +22,7 @@ export interface ExplorerRow {
   wordCount: number | null;
   responseTimeMs: number | null;
   reason: string | null;
+  pagerank?: number | null;
 }
 
 export function statusTone(code: number | null): "ok" | "warn" | "danger" | "neutral" {
@@ -51,9 +52,9 @@ export function sectionOf(url: string): string {
   }
 }
 
-export type SortKey = "url" | "status" | "depth" | "wordCount" | "responseTime";
+export type SortKey = "url" | "status" | "depth" | "wordCount" | "responseTime" | "pagerank";
 
-export const SORT_KEYS: SortKey[] = ["url", "status", "depth", "wordCount", "responseTime"];
+export const SORT_KEYS: SortKey[] = ["url", "status", "depth", "wordCount", "responseTime", "pagerank"];
 
 /** URL-shaped filter/sort state — the single source of truth so list + detail (prev/next) agree. */
 export interface ExplorerFilterParams {
@@ -78,6 +79,8 @@ function sortValue(row: ExplorerRow, key: SortKey): string | number | null {
       return row.wordCount;
     case "responseTime":
       return row.responseTimeMs;
+    case "pagerank":
+      return row.pagerank ?? null;
   }
 }
 
