@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 type ConnState = "connecting" | "open" | "reconnecting" | "complete" | "error";
 
 const ROW_HEIGHT = 30;
-const OVERSCAN = 10;
+const OVERSCAN = 25;
 const MAX_BUFFERED_EVENTS = 20000;
 const NEAR_BOTTOM_PX = ROW_HEIGHT * 2;
 const MAX_BACKOFF_MS = 10000;
@@ -23,6 +23,7 @@ interface Props {
   initialEvents: ActivityEvent[];
   initialSource: "durable" | "synthetic";
   urlToPageId: [string, string][];
+  className?: string;
 }
 
 function appendCapped(prev: ActivityEvent[], next: ActivityEvent): ActivityEvent[] {
@@ -42,7 +43,7 @@ function alreadyTerminal(events: ActivityEvent[]): boolean {
   return events.some((e) => TERMINAL_TYPES.has(e.type));
 }
 
-export function ActivityStreamClient({ runId, initialEvents, initialSource, urlToPageId }: Props) {
+export function ActivityStreamClient({ runId, initialEvents, initialSource, urlToPageId, className }: Props) {
   const [events, setEvents] = useState<ActivityEvent[]>(initialEvents);
   const [source, setSource] = useState<"durable" | "synthetic">(initialSource);
   const [connState, setConnState] = useState<ConnState>(alreadyTerminal(initialEvents) ? "complete" : "connecting");
@@ -134,23 +135,6 @@ export function ActivityStreamClient({ runId, initialEvents, initialSource, urlT
     // manualConnectTick intentionally re-triggers this effect for the "Reconnect" button.
   }, [connect, manualConnectTick]);
 
-  // --- Virtualization ---
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => setViewportHeight(entries[0].contentRect.height));
-    ro.observe(el);
-    setViewportHeight(el.clientHeight);
-    return () => ro.disconnect();
-  }, []);
-
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    setScrollTop(el.scrollTop);
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setAutoScroll(distanceFromBottom < NEAR_BOTTOM_PX);
-  }, []);
-
   const kindCounts = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of events) m.set(e.type, (m.get(e.type) ?? 0) + 1);
@@ -176,6 +160,33 @@ export function ActivityStreamClient({ runId, initialEvents, initialSource, urlT
     });
   }, [events, activeKinds, status, search]);
 
+  // --- Virtualization ---
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const currentH = el.clientHeight || 500;
+    setViewportHeight(currentH);
+    const ro = new ResizeObserver((entries) => {
+      if (entries[0]) {
+        const h = entries[0].contentRect.height || el.clientHeight;
+        if (h > 0) setViewportHeight(h);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [events.length, filtered.length]);
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const currentHeight = el.clientHeight;
+    if (currentHeight && currentHeight !== viewportHeight) {
+      setViewportHeight(currentHeight);
+    }
+    setScrollTop(el.scrollTop);
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setAutoScroll(distanceFromBottom < NEAR_BOTTOM_PX);
+  }, [viewportHeight]);
+
   const prevFilteredLen = useRef(filtered.length);
   useEffect(() => {
     const grew = filtered.length > prevFilteredLen.current;
@@ -186,8 +197,9 @@ export function ActivityStreamClient({ runId, initialEvents, initialSource, urlT
   }, [filtered.length, autoScroll]);
 
   const total = filtered.length;
+  const effectiveHeight = viewportHeight > 0 ? viewportHeight : 500;
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
-  const visibleCount = Math.ceil(viewportHeight / ROW_HEIGHT) + OVERSCAN * 2;
+  const visibleCount = Math.ceil(effectiveHeight / ROW_HEIGHT) + OVERSCAN * 2;
   const endIndex = Math.min(total, startIndex + visibleCount);
   const visibleItems = filtered.slice(startIndex, endIndex);
 
@@ -206,7 +218,7 @@ export function ActivityStreamClient({ runId, initialEvents, initialSource, urlT
   }
 
   return (
-    <div className="flex h-[calc(100dvh-320px)] min-h-[360px] flex-col gap-3">
+    <div className={cn("flex h-[calc(100dvh-320px)] min-h-[360px] flex-col gap-3", className)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <ConnectionPill state={connState} attempt={reconnectAttempt} onReconnect={() => setManualConnectTick((n) => n + 1)} />
         {source === "synthetic" && (
@@ -246,7 +258,7 @@ export function ActivityStreamClient({ runId, initialEvents, initialSource, urlT
         ) : (
           <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-y-auto">
             <div style={{ height: total * ROW_HEIGHT, position: "relative" }}>
-              <div style={{ position: "absolute", top: startIndex * ROW_HEIGHT, left: 0, right: 0 }} className="divide-y divide-border/60">
+              <div style={{ position: "absolute", top: startIndex * ROW_HEIGHT, left: 0, right: 0 }}>
                 {visibleItems.map((evt) => (
                   <EventRow key={evt.seq} event={evt} runId={runId} pageId={evt.url ? urlMap.get(evt.url) ?? null : null} style={{ height: ROW_HEIGHT }} />
                 ))}
