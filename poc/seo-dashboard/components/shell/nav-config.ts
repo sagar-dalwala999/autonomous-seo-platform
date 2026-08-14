@@ -1,4 +1,4 @@
-import { LayoutGrid, History, FileText, AlertTriangle, Map, ShieldAlert, GitCompare, ListTodo, Link2, ImageIcon, GitBranch, Activity, Gauge, Bot, type LucideIcon } from "lucide-react";
+import { LayoutGrid, History, FileText, AlertTriangle, Map, ShieldAlert, GitCompare, ListTodo, Link2, ImageIcon, GitBranch, Activity, Gauge, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -28,10 +28,9 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Findings",
     items: [
-      { href: "/issues", label: "Issues", icon: ShieldAlert },
+      { href: "/issues", label: "What to Fix.", icon: ShieldAlert },
       { href: "/failures", label: "Failures & Blocked", icon: AlertTriangle },
       { href: "/sitemap", label: "Sitemap & Robots", icon: Map },
-      { href: "/sitefiles", label: "What the site tells crawlers", icon: Bot },
     ],
   },
   {
@@ -60,11 +59,10 @@ export const ROUTE_TITLES: { test: (path: string) => boolean; title: string }[] 
   { test: (p) => p === "/pages", title: "Pages" },
   { test: (p) => p === "/failures", title: "Failures & Blocked" },
   { test: (p) => p === "/sitemap", title: "Sitemap & Robots" },
-  { test: (p) => p === "/issues", title: "Issues" },
+  { test: (p) => p === "/issues", title: "What to Fix." },
   { test: (p) => p === "/compare", title: "Compare" },
   { test: (p) => p === "/activity", title: "Activity" },
   { test: (p) => p === "/measurements", title: "All Measurements" },
-  { test: (p) => p === "/sitefiles", title: "What the site tells crawlers" },
   { test: (p) => p === "/queue", title: "Crawl queue" },
   { test: (p) => p === "/links", title: "Links" },
   { test: (p) => p === "/images", title: "Images" },

@@ -1,11 +1,16 @@
 import Link from "next/link";
-import { History, Map } from "lucide-react";
+import { History, Map as MapIcon } from "lucide-react";
 import { resolveRunId, getRun, getPages } from "@/lib/data";
 import { findPageIdByUrl } from "@/lib/data-explorer";
+import { buildAiAccessTable } from "@/lib/data-sitefiles";
+import { findRuleSourceLine } from "@/lib/sitefiles-lines";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Card } from "@/components/ui/card";
 import { StatValue } from "@/components/ui/stat-value";
 import { Badge } from "@/components/ui/badge";
+import { RobotsPanel } from "@/components/sitemap/robots-panel";
+import { LlmsPanel } from "@/components/sitemap/llms-panel";
+import { AiCrawlerHeadline, AiCrawlerTable } from "@/components/sitemap/ai-crawler-table";
 
 interface Props {
   searchParams: Promise<{ run?: string }>;
@@ -73,8 +78,44 @@ export default async function SitemapPage({ searchParams }: Props) {
   const pages = await getPages(runId);
 
   if (!robots && !sitemaps) {
-    return <EmptyState icon={Map} title="No robots/sitemap evidence for this run" />;
+    return <EmptyState icon={MapIcon} title="No robots/sitemap evidence for this run" />;
   }
+
+  // AI-crawler access table — moved here from the former /sitefiles ("What the site tells
+  // crawlers") screen; consumed server-side via the same lib the /api/crawls/:id/site-files
+  // routes use (this codebase's SSR convention).
+  const aiAccess = await buildAiAccessTable(runId);
+  const rows = aiAccess?.rows ?? [];
+  const robotsAvailable = Boolean(robots?.content && robots.parseStatus === "ok");
+
+  const sourceLines = new Map<string, number | null>();
+  if (robotsAvailable && robots?.content) {
+    for (const r of rows) {
+      const ruleType: "allow" | "disallow" | null = r.verdict === "allowed" && r.allowRules[0] ? "allow" : r.verdict === "blocked" || r.verdict === "partly-blocked" ? "disallow" : null;
+      const rulePath = ruleType === "allow" ? r.allowRules[0] ?? null : ruleType === "disallow" ? r.disallowRules[0] ?? null : null;
+      sourceLines.set(r.agent, findRuleSourceLine(robots.content, r.matchedGroup, rulePath, ruleType));
+    }
+  }
+
+  // llms.txt is probed by the crawler alongside robots.txt and stored on robots.json as
+  // robots.llmsTxt (metadata, plus the body from the content-storing crawler version on).
+  const llms = robots?.llmsTxt;
+  const llmsTxt = llms
+    ? {
+        available: true,
+        present: llms.present,
+        url: llms.url,
+        statusCode: llms.statusCode,
+        bytes: llms.bytes,
+        fetchedAt: llms.fetchedAt,
+        content: llms.content ?? null,
+        reason: llms.present
+          ? llms.content
+            ? null
+            : "Fetched by this run's crawler, but that crawler version did not store the file body."
+          : `llms.txt not found — HTTP ${llms.statusCode ?? "error"}.`,
+      }
+    : { available: false, reason: "llms.txt was not probed for this run (robots.json carries no llmsTxt field — crawler version predates llms.txt probing)." };
 
   return (
     <div className="space-y-6">
@@ -92,23 +133,20 @@ export default async function SitemapPage({ searchParams }: Props) {
         </div>
       )}
 
-      {robots && (
-        <Card>
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">robots.txt</h2>
-            <Badge tone={robots.parseStatus === "ok" ? "ok" : robots.parseStatus === "error" ? "danger" : "neutral"}>
-              {robots.parseStatus}
-            </Badge>
-          </div>
-          <p className="mb-2 text-xs text-faint">
-            {robots.url} · fetched {new Date(robots.fetchedAt).toLocaleString()} · {robots.sitemaps.length} sitemap
-            declaration{robots.sitemaps.length === 1 ? "" : "s"}
-          </p>
-          <pre className="max-h-64 overflow-auto rounded-control border border-border bg-elevated p-3 text-xs text-secondary">
-            {robots.content ?? "(no content)"}
-          </pre>
-        </Card>
+      <AiCrawlerHeadline rows={rows} />
+
+      <AiCrawlerTable rows={rows} sourceLines={sourceLines} robotsAvailable={robotsAvailable} />
+
+      {aiAccess && aiAccess.parseStatus !== "ok" && (
+        <p className="text-xs text-faint">
+          robots.txt parse status: <span className="font-medium text-foreground">{aiAccess.parseStatus}</span> — verdicts above fell back to &quot;unknown&quot; rather than guessing.
+        </p>
       )}
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <RobotsPanel robots={robots} sitemapCount={robots?.sitemaps.length ?? 0} />
+        <LlmsPanel llmsTxt={llmsTxt} />
+      </div>
 
       {sitemaps && sitemaps.files.length > 0 && (
         <Card>

@@ -3,9 +3,14 @@ import { Card } from "@/components/ui/card";
 
 interface LlmsTxt {
   available: boolean;
+  /** The crawler fetched the file and it counts as a real llms.txt (not an HTML error page). */
+  present?: boolean;
   reason?: string | null;
   content?: string | null;
   url?: string | null;
+  statusCode?: number | null;
+  bytes?: number | null;
+  fetchedAt?: string | null;
 }
 
 /** llms.txt is reported for information only — it must never read as though it affects a score
@@ -20,6 +25,19 @@ export function LlmsPanel({ llmsTxt }: { llmsTxt: LlmsTxt | null | undefined }) 
           Informational only — never affects a score
         </span>
       </div>
+      {llmsTxt?.available && llmsTxt.url && (
+        <p className="mb-2 text-xs text-faint">
+          {llmsTxt.url}
+          {typeof llmsTxt.statusCode === "number" && ` · HTTP ${llmsTxt.statusCode}`}
+          {typeof llmsTxt.bytes === "number" && (
+            <>
+              {" · "}
+              <span className="tabular-nums">{llmsTxt.bytes.toLocaleString()} bytes</span>
+            </>
+          )}
+          {llmsTxt.fetchedAt && ` · fetched ${new Date(llmsTxt.fetchedAt).toLocaleString()}`}
+        </p>
+      )}
       {llmsTxt?.available && llmsTxt.content ? (
         <pre className="max-h-56 overflow-auto rounded-control border border-border bg-elevated p-3 text-xs text-secondary">{llmsTxt.content}</pre>
       ) : (
