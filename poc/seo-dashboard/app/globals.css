@@ -172,11 +172,16 @@ body {
 }
 
 .overflow-y-auto,
-.overflow-auto,
-.overflow-x-auto {
-  /* Prevents a nested scroll region (sidebar nav, a table, a drawer) from "chaining" into the
-     page scroll once it hits its own top/bottom — the behavior the owner flagged as feeling broken. */
-  overscroll-behavior: contain;
+.overflow-auto {
+  /* Axis-specific on purpose: plain `overscroll-behavior: contain` sets BOTH axes, so a
+     horizontal-only scroller (every table is wrapped in .overflow-x-auto) swallowed vertical
+     wheel events and the page stopped scrolling with the pointer over a table. */
+  overscroll-behavior-y: contain;
+}
+
+.overflow-x-auto,
+.overflow-auto {
+  overscroll-behavior-x: contain;
 }
 
 .overflow-y-auto:hover,
