@@ -32,7 +32,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {NO_FLASH_SCRIPT}
         </Script>
         <TopbarActionsProvider>
-          <AppShell runCount={runs.length} reportPath={reportPath}>
+          <AppShell runs={runs} runCount={runs.length} reportPath={reportPath}>
             {children}
           </AppShell>
         </TopbarActionsProvider>

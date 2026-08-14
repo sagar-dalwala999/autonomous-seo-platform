@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<title>Rich head metadata | Summit Trail Gear</title>
+<meta name="description" content="Seeded fixture exercising Open Graph image binding, inverted conflict rules, zoom-blocking viewport, third-party fonts, favicon resolution and a late charset.">
+<base href="https://summittrailgear.example/seeded/">
+<base href="https://ignored.example/">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0f172a">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="generator" content="Seeded Fixture 1.0">
+<meta name="google-site-verification" content="seeded-google-token-abc123">
+<meta name="msvalidate.01" content="SEEDED-BING-TOKEN-456">
+<meta name="p:domain_verify" content="seeded-pinterest-token-789">
+<meta property="og:title" content="First OG title wins">
+<meta property="og:title" content="Second OG title must lose">
+<meta property="og:type" content="article">
+<meta property="og:image" content="https://summittrailgear.example/img/hero.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Hero image alt text">
+<meta property="og:image" content="https://summittrailgear.example/img/square.png">
+<meta property="og:image:width" content="600">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Twitter title via name attribute">
+<meta property="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap">
+<link rel="preload" as="font" href="/fonts/no-crossorigin.woff2" type="font/woff2">
+<link rel="preload" as="font" href="/fonts/with-crossorigin.woff2" type="font/woff2" crossorigin>
+<style>
+@font-face{font-family:"SeededBlock";src:url(/fonts/seeded-block.woff2) format("woff2");font-display:block}
+@font-face{font-family:"SeededSwap";src:url(https://fonts.gstatic.com/s/seeded/swap.woff2) format("woff2");font-display:swap}
+</style>
+<meta name="filler-one" content="Padding so the charset declaration below is pushed past the 1024-byte prescan window. A meta charset serialised beyond that limit is valid HTML that silently never takes effect, which produces mojibake nobody can explain.">
+<meta charset="utf-8">
+</head>
+<body>
+<header><nav><a href="/">Home</a> <a href="/guides">Guides</a></nav></header>
+<main>
+<article>
+<h1>Rich head metadata fixture</h1>
+<p>This page seeds the v3 extraction edge cases so the extractors and the dashboard panels can be verified against real crawler output rather than inferred shapes.</p>
+<h2>Open Graph images bind by position</h2>
+<p>Two og:image roots appear. The first carries width, height and alt; the second carries only width. A flat property map cannot represent this.</p>
+<h3>Conflict rules invert</h3>
+<p>og:title takes the first occurrence. twitter:card takes the last, and is declared via both name and property attributes.</p>
+<h5>Heading level skipped deliberately</h5>
+<p>This h5 follows an h3 with no h4, seeding an upward skip for the heading-sequence check.</p>
+<h2>Structure inventory</h2>
+<ul><li>Unordered item one</li><li>Unordered item two</li></ul>
+<ol><li>Ordered item one</li></ol>
+<dl><dt>Definition term</dt><dd>Definition description</dd></dl>
+<table><caption>A real data table</caption><thead><tr><th scope="col">Column</th></tr></thead><tbody><tr><td>Cell</td></tr></tbody></table>
+<table><tbody><tr><td>Layout table with no th and no caption</td></tr></tbody></table>
+<pre><code>a code block</code></pre>
+<blockquote><p>A blockquote.</p></blockquote>
+</article>
+</main>
+<aside aria-label="Related"><p>Named section landmark.</p></aside>
+<footer><p>Seeded fixture &mdash; Summit Trail Gear</p></footer>
+</body>
+</html>

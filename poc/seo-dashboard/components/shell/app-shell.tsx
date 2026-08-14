@@ -2,29 +2,38 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Menu } from "lucide-react";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { NAV_SECTIONS } from "./nav-config";
 import { SlideOver } from "@/components/ui/slide-over";
 import { cn } from "@/lib/cn";
+import type { RunListItem } from "@/lib/data";
 
 interface Props {
+  runs: RunListItem[];
   runCount: number;
   reportPath: string;
   children: ReactNode;
 }
 
-export function AppShell({ runCount, reportPath, children }: Props) {
+export function AppShell({ runs, runCount, reportPath, children }: Props) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const allItems = NAV_SECTIONS.flatMap((s) => s.items);
+
+  // Carries the selected run across nav (mobile icon rail) — destination pages fall back to
+  // latest on an absent/invalid ?run= (lib/data.ts resolveRunId), so this is safe to forward as-is.
+  const run = searchParams.get("run");
+  const withRun = (href: string) => (run ? `${href}?run=${encodeURIComponent(run)}` : href);
 
   return (
     // grid-rows-[minmax(0,1fr)]: without it the implicit row grows past h-dvh with tall content,
     // main's overflow-y-auto never engages, and the overflow-hidden body makes the app unscrollable.
     <div className="grid h-dvh w-full grid-cols-[64px_1fr] grid-rows-[minmax(0,1fr)] lg:grid-cols-[264px_1fr]">
+      {/* Sidebar preserves ?run= itself via its own useSearchParams — see components/shell/sidebar.tsx. */}
       <aside className="hidden min-h-0 flex-col overflow-y-auto border-r border-border bg-card lg:flex">
         <Sidebar runCount={runCount} reportPath={reportPath} />
       </aside>
@@ -44,7 +53,7 @@ export function AppShell({ runCount, reportPath, children }: Props) {
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={withRun(item.href)}
               aria-label={item.label}
               aria-current={active ? "page" : undefined}
               className={cn(
@@ -70,7 +79,7 @@ export function AppShell({ runCount, reportPath, children }: Props) {
       </SlideOver>
 
       <div className="flex min-h-0 min-w-0 flex-col">
-        <Topbar />
+        <Topbar runs={runs} />
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>

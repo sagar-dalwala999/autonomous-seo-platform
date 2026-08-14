@@ -5,6 +5,8 @@ import type { Issue, RuleMeta } from "../../../models/types";
 import {
   buildInlinkOccurrences,
   httpFailurePaths,
+  httpFailureStatusByPath,
+  AUTH_REQUIRED_STATUSES,
   isRuleEnabled,
   pageByPath,
   pageIdFor,
@@ -116,10 +118,19 @@ const brokenLinkMeta: RuleMeta = {
   id: "broken-internal-link",
   category: "links",
   defaultSeverity: "error",
-  description: "An internal link's target failed (4xx/5xx) or was recorded as a crawl failure.",
+  description:
+    "An internal link's target failed (4xx/5xx) or was recorded as a crawl failure. " +
+    "401/403 targets are excluded — those are auth-required-link, not broken.",
   howToFix: "Fix or remove the link so it points at a live page.",
   dataRequirements: ["links"],
 };
+
+/** Effective status of a link target: the crawled record's, else the recorded failure's. */
+function targetStatus(ctx: SiteRuleContext, targetPath: string, failedStatus: Map<string, number | null>): number | null {
+  const targetPage = pageByPath(ctx.pages, targetPath);
+  if (targetPage?.statusCode != null) return targetPage.statusCode;
+  return failedStatus.get(targetPath) ?? null;
+}
 
 export const brokenInternalLinkRule: SiteRule = {
   meta: brokenLinkMeta,
@@ -127,6 +138,7 @@ export const brokenInternalLinkRule: SiteRule = {
     if (!isRuleEnabled(brokenLinkMeta.id, config)) return null;
     const severity = resolvedSeverity(brokenLinkMeta.id, brokenLinkMeta.defaultSeverity, config);
     const failedPaths = httpFailurePaths(ctx.failures);
+    const failedStatus = httpFailureStatusByPath(ctx.failures);
     const issues: Issue[] = [];
     for (const page of ctx.pages) {
       page.links.forEach((link, index) => {
@@ -137,6 +149,8 @@ export const brokenInternalLinkRule: SiteRule = {
         const isBroken =
           failedPaths.has(targetPath) || (targetPage?.statusCode !== null && targetPage?.statusCode !== undefined && targetPage.statusCode >= 400);
         if (!isBroken) return;
+        const status = targetStatus(ctx, targetPath, failedStatus);
+        if (status !== null && AUTH_REQUIRED_STATUSES.has(status)) return; // auth wall, not a dead link
         issues.push({
           ruleId: brokenLinkMeta.id,
           category: brokenLinkMeta.category,
@@ -144,8 +158,53 @@ export const brokenInternalLinkRule: SiteRule = {
           scope: "site",
           url: primaryUrl(page),
           pageId: pageIdFor(page.normalizedUrl),
-          message: `${primaryUrl(page)} links to ${link.target}, which fails`,
+          message: `${primaryUrl(page)} links to ${link.target}, which fails${status === null ? "" : ` (${status})`}`,
           howToFix: brokenLinkMeta.howToFix,
+          evidence: [{ field: `links[${index}].targetNormalized`, value: link.targetNormalized ?? link.target }],
+        });
+      });
+    }
+    return issues;
+  },
+};
+
+const authRequiredLinkMeta: RuleMeta = {
+  id: "auth-required-link",
+  category: "links",
+  defaultSeverity: "notice",
+  description:
+    "An internal link points at a target that returned 401 or 403. On an anonymous crawl this is " +
+    "expected for a genuinely protected area, so it is reported as coverage information rather " +
+    "than a defect. It is only a real problem if the target was meant to be public.",
+  howToFix:
+    "If the area is meant to be public, fix the access control. If it is genuinely protected, " +
+    "re-crawl with credentials to cover it.",
+  dataRequirements: ["links"],
+};
+
+export const authRequiredLinkRule: SiteRule = {
+  meta: authRequiredLinkMeta,
+  evaluate(ctx, config) {
+    if (!isRuleEnabled(authRequiredLinkMeta.id, config)) return null;
+    const severity = resolvedSeverity(authRequiredLinkMeta.id, authRequiredLinkMeta.defaultSeverity, config);
+    const failedStatus = httpFailureStatusByPath(ctx.failures);
+    const issues: Issue[] = [];
+    for (const page of ctx.pages) {
+      page.links.forEach((link, index) => {
+        if (link.type !== "internal") return;
+        const targetPath = pathnameOf(link.targetNormalized ?? link.target);
+        if (!targetPath) return;
+        const status = targetStatus(ctx, targetPath, failedStatus);
+        if (status === null || !AUTH_REQUIRED_STATUSES.has(status)) return;
+        issues.push({
+          ruleId: authRequiredLinkMeta.id,
+          category: authRequiredLinkMeta.category,
+          severity,
+          scope: "site",
+          url: primaryUrl(page),
+          pageId: pageIdFor(page.normalizedUrl),
+          message: `${primaryUrl(page)} links to ${link.target}, which requires authentication (${status})`,
+          howToFix: authRequiredLinkMeta.howToFix,
           evidence: [{ field: `links[${index}].targetNormalized`, value: link.targetNormalized ?? link.target }],
         });
       });

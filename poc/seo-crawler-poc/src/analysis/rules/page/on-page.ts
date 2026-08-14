@@ -5,6 +5,37 @@ import { issueFor } from "./shared";
 
 const isBlank = (s: string | null): boolean => s === null || s.trim() === "";
 
+/* Screaming Frog's published minimums, used when a config predates these thresholds. */
+const DEFAULT_TITLE_MIN_PX = 200;
+const DEFAULT_DESC_MIN_PX = 400;
+const DEFAULT_URL_MAX_CHARS = 115;
+
+function urlTooLong(): PageRule {
+  const meta: RuleMeta = {
+    id: "url-too-long",
+    category: "on-page",
+    defaultSeverity: "notice",
+    description: "URL exceeds the configured maximum character length (Screaming Frog flags over 115).",
+    howToFix: "Shorten the URL slug; long URLs are truncated in search results and harder to share.",
+    dataRequirements: [],
+  };
+  return {
+    meta,
+    evaluate(page, config) {
+      const url = page.normalizedUrl ?? page.url;
+      const max = config.thresholds.urlMaxChars ?? DEFAULT_URL_MAX_CHARS;
+      if (url.length <= max) return [];
+      return [
+        issueFor(meta, config, page, {
+          message: `URL is ${url.length} characters.`,
+          evidence: [{ field: "normalizedUrl", value: url }],
+          threshold: `url ${url.length} chars > max ${max}`,
+        }),
+      ];
+    },
+  };
+}
+
 function titleMissing(): PageRule {
   const meta: RuleMeta = {
     id: "title-missing",
@@ -37,16 +68,23 @@ function titleTooShort(): PageRule {
     evaluate(page, config) {
       if (isBlank(page.title)) return []; // covered by title-missing
       const len = page.title!.length;
-      if (len >= config.thresholds.titleMinChars) return [];
-      const px = page.pixelWidths?.titlePx;
+      const px = page.pixelWidths?.titlePx ?? null;
+      const minPx = config.thresholds.titleMinPx ?? DEFAULT_TITLE_MIN_PX;
+      const underChars = len < config.thresholds.titleMinChars;
+      // Pixel width is the real SERP constraint: "IIII" and "WWWW" are the same char count.
+      const underPx = px !== null && px < minPx;
+      if (!underChars && !underPx) return [];
+      const parts: string[] = [];
+      if (underChars) parts.push(`title ${len} chars < min ${config.thresholds.titleMinChars}`);
+      if (underPx) parts.push(`title ~${px}px < min ${minPx}px`);
       return [
         issueFor(meta, config, page, {
-          message: `Title is only ${len} characters.`,
+          message: underChars ? `Title is only ${len} characters.` : `Title is only ~${px}px wide.`,
           evidence: [
             { field: "title", value: page.title },
-            ...(px !== undefined && px !== null ? [{ field: "pixelWidths.titlePx", value: px }] : []),
+            ...(px !== null ? [{ field: "pixelWidths.titlePx", value: px }] : []),
           ],
-          threshold: `title ${len} chars < min ${config.thresholds.titleMinChars}`,
+          threshold: parts.join("; "),
         }),
       ];
     },
@@ -149,12 +187,22 @@ function descTooShort(): PageRule {
     evaluate(page, config) {
       if (isBlank(page.metaDescription)) return [];
       const len = page.metaDescription!.length;
-      if (len >= config.thresholds.descMinChars) return [];
+      const px = page.pixelWidths?.metaDescriptionPx ?? null;
+      const minPx = config.thresholds.descMinPx ?? DEFAULT_DESC_MIN_PX;
+      const underChars = len < config.thresholds.descMinChars;
+      const underPx = px !== null && px < minPx;
+      if (!underChars && !underPx) return [];
+      const parts: string[] = [];
+      if (underChars) parts.push(`description ${len} chars < min ${config.thresholds.descMinChars}`);
+      if (underPx) parts.push(`description ~${px}px < min ${minPx}px`);
       return [
         issueFor(meta, config, page, {
-          message: `Meta description is only ${len} characters.`,
-          evidence: [{ field: "metaDescription", value: page.metaDescription }],
-          threshold: `description ${len} chars < min ${config.thresholds.descMinChars}`,
+          message: underChars ? `Meta description is only ${len} characters.` : `Meta description is only ~${px}px wide.`,
+          evidence: [
+            { field: "metaDescription", value: page.metaDescription },
+            ...(px !== null ? [{ field: "pixelWidths.metaDescriptionPx", value: px }] : []),
+          ],
+          threshold: parts.join("; "),
         }),
       ];
     },
@@ -286,6 +334,7 @@ function headingHierarchySkip(): PageRule {
 
 export function onPageRules(): PageRule[] {
   return [
+    urlTooLong(),
     titleMissing(),
     titleTooShort(),
     titleTooLong(),

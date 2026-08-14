@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { TableContainer, TableHead, Th, Tr, Td } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { CoverageBar } from "@/components/overview/coverage-bar";
+import { hostnameFor, formatRunTimestamp } from "@/components/shell/run-label";
 
 function formatDuration(startedAt: string, finishedAt: string): string {
   const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
@@ -44,7 +45,7 @@ export default async function RunsPage() {
   return (
     <TableContainer>
       <TableHead>
-        <Th>Run</Th>
+        <Th>Site</Th>
         <Th>Start URL</Th>
         <Th>Started</Th>
         <Th>Duration</Th>
@@ -61,8 +62,9 @@ export default async function RunsPage() {
           return (
             <Tr key={run.runId}>
               <Td className="font-medium text-foreground">
-                <Link href={href} className="text-primary underline underline-offset-2">
-                  {run.runId}
+                <Link href={href} className="block underline-offset-2 hover:underline" title={run.runId}>
+                  <span className="block text-primary">{hostnameFor(run.startUrl)}</span>
+                  <span className="block text-[11px] font-normal text-faint">{run.runId}</span>
                 </Link>
               </Td>
               <Td className="max-w-xs">
@@ -72,7 +74,7 @@ export default async function RunsPage() {
               </Td>
               <Td className="text-secondary">
                 <Link href={href} className="hover:text-foreground hover:underline">
-                  {new Date(run.startedAt).toLocaleString()}
+                  {formatRunTimestamp(run.startedAt)}
                 </Link>
               </Td>
               <Td>

@@ -20,10 +20,18 @@ import { LinksPanel } from "@/components/explorer/links-panel";
 import { MediaPanel } from "@/components/explorer/media-panel";
 import { ContentPanel } from "@/components/explorer/collapsible-text";
 import { PageActions } from "@/components/explorer/page-actions";
+import { PageReplay } from "@/components/preview/page-replay";
+import { frameability } from "@/components/preview/frameability";
 import { PageIssuesPanel } from "@/components/issues/page-issues-panel";
 import { SectionNav } from "@/components/explorer/section-nav";
 import { BreadcrumbNav } from "@/components/explorer/breadcrumb-nav";
 import { Card } from "@/components/ui/card";
+import { HeadMetadataPanel } from "@/components/page-detail/head-metadata-panel";
+import { HeadIntegrityPanel } from "@/components/page-detail/head-integrity-panel";
+import { FaviconsPanel } from "@/components/page-detail/favicons-panel";
+import { FontsPanel } from "@/components/page-detail/fonts-panel";
+import { DocumentStructurePanel } from "@/components/page-detail/document-structure-panel";
+import type { ExtendedCrawledPage } from "@/components/page-detail/types";
 
 interface SearchParams {
   run?: string;
@@ -89,6 +97,10 @@ export default async function PageDetailPage({ params, searchParams }: Props) {
     .then(() => true)
     .catch(() => false);
 
+  // staticRawSaved is the crawler's own record that a pre-render snapshot was stored.
+  const hasStaticHtml = page.renderDivergence?.staticRawSaved === true;
+  const frame = frameability(page.headers, page.url);
+
   const analysisReport = await readAnalysisReport(runId);
   const pageIssues = analysisReport ? findingsForPage(analysisReport, page.pageId) : [];
 
@@ -130,12 +142,32 @@ export default async function PageDetailPage({ params, searchParams }: Props) {
         <div className="min-w-0 space-y-4">
           <PageIssuesPanel issues={pageIssues} analyzed={Boolean(analysisReport)} runId={runId} />
           <MetadataPanel page={page} />
+          <HeadMetadataPanel page={page as ExtendedCrawledPage} />
+          <HeadIntegrityPanel page={page as ExtendedCrawledPage} />
+          <FaviconsPanel page={page as ExtendedCrawledPage} />
+          <FontsPanel page={page as ExtendedCrawledPage} />
           <HeadingsPanel page={page} />
+          <DocumentStructurePanel page={page as ExtendedCrawledPage} />
           <LinksPanel links={page.links} />
           <ImagesPanel page={page} />
           <MediaPanel page={page} />
           <StructuredDataPanel page={page} />
           <ContentPanel text={page.content.text} wordCount={page.content.wordCount} contentHash={page.content.contentHash} />
+          {hasRawHtml && (
+            <div id="replay">
+              <PageReplay
+                runId={runId}
+                pageId={page.pageId}
+                pageUrl={page.url}
+                statusCode={page.statusCode}
+                fetchedAt={page.fetchedAt}
+                hasStaticHtml={hasStaticHtml}
+                canFrameLive={frame.canFrameLive}
+                frameBlockedBy={frame.frameBlockedBy}
+                hasScreenshot={Boolean(page.screenshot?.full)}
+              />
+            </div>
+          )}
           <RedirectChainPanel page={page} />
           <HeadersPanel page={page} />
           <CrawlPanel page={page} runId={runId} parentPageId={parentPageId} />

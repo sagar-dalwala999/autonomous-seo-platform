@@ -27,6 +27,14 @@ export interface AnalysisConfig {
      * so pre-C3 configs still validate; the rule falls back to similarity.ts's own default (0.75). */
     nearDupSimilarity?: number;
     weakInlinkCount: number;
+    /* Screaming Frog's published limits (verified 2026-08-13). Optional so pre-existing configs
+     * and fixtures still validate; each rule falls back to the constant below. */
+    titleMinPx?: number;
+    descMinPx?: number;
+    urlMaxChars?: number;
+    /** Both are XML sitemap protocol HARD limits — a sitemap over either is invalid, not merely large. */
+    sitemapMaxUrls?: number;
+    sitemapMaxBytes?: number;
   };
 }
 

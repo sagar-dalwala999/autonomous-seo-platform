@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { brokenInternalLinkRule, canonicalTargetValidityRule, weaklyLinkedRule } from "../../../../src/analysis/rules/site/links";
+import {
+  authRequiredLinkRule,
+  brokenInternalLinkRule,
+  canonicalTargetValidityRule,
+  weaklyLinkedRule,
+} from "../../../../src/analysis/rules/site/links";
 import { makeConfig, makeContext, makeFailure, makeLink, makePage } from "./fixtures";
 
 describe("weaklyLinkedRule", () => {
@@ -95,5 +100,56 @@ describe("brokenInternalLinkRule", () => {
     const failures = [makeFailure({ url: "https://elsewhere.test/broken", reason: "http-4xx" })];
     const issues = brokenInternalLinkRule.evaluate(makeContext({ pages: [page], failures }), makeConfig())!;
     expect(issues).toHaveLength(0);
+  });
+});
+
+describe("auth-required vs broken links", () => {
+  function linkingTo(targetUrl: string) {
+    return makePage({ url: "https://x.test/", links: [makeLink({ source: "https://x.test/", target: targetUrl })] });
+  }
+
+  for (const status of [401, 403]) {
+    it(`treats a ${status} target as auth-required, not broken`, () => {
+      const ctx = makeContext({
+        pages: [linkingTo("https://x.test/members")],
+        failures: [makeFailure({ url: "https://x.test/members", reason: "http-4xx", statusCode: status })],
+      });
+      expect(brokenInternalLinkRule.evaluate(ctx, makeConfig())!).toHaveLength(0);
+      const auth = authRequiredLinkRule.evaluate(ctx, makeConfig())!;
+      expect(auth).toHaveLength(1);
+      expect(auth[0]!.severity).toBe("notice");
+      expect(auth[0]!.message).toContain(String(status));
+    });
+  }
+
+  it("still reports a 404 target as broken, and never as auth-required", () => {
+    const ctx = makeContext({
+      pages: [linkingTo("https://x.test/gone")],
+      failures: [makeFailure({ url: "https://x.test/gone", reason: "http-4xx", statusCode: 404 })],
+    });
+    expect(brokenInternalLinkRule.evaluate(ctx, makeConfig())!).toHaveLength(1);
+    expect(authRequiredLinkRule.evaluate(ctx, makeConfig())!).toHaveLength(0);
+  });
+
+  it("still reports a 5xx target as broken", () => {
+    const ctx = makeContext({
+      pages: [linkingTo("https://x.test/boom")],
+      failures: [makeFailure({ url: "https://x.test/boom", reason: "http-5xx", statusCode: 503 })],
+    });
+    expect(brokenInternalLinkRule.evaluate(ctx, makeConfig())!).toHaveLength(1);
+  });
+
+  it("reads the status from a crawled page record, not just the failure list", () => {
+    const target = makePage({ url: "https://x.test/members", statusCode: 403 });
+    const ctx = makeContext({ pages: [linkingTo("https://x.test/members"), target] });
+    expect(brokenInternalLinkRule.evaluate(ctx, makeConfig())!).toHaveLength(0);
+    expect(authRequiredLinkRule.evaluate(ctx, makeConfig())!).toHaveLength(1);
+  });
+
+  it("does not fire either rule for a healthy target", () => {
+    const target = makePage({ url: "https://x.test/ok", statusCode: 200 });
+    const ctx = makeContext({ pages: [linkingTo("https://x.test/ok"), target] });
+    expect(brokenInternalLinkRule.evaluate(ctx, makeConfig())!).toHaveLength(0);
+    expect(authRequiredLinkRule.evaluate(ctx, makeConfig())!).toHaveLength(0);
   });
 });

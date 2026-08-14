@@ -137,3 +137,43 @@ describe("h1-missing / h1-multiple / heading-hierarchy-skip", () => {
     ).toEqual([]);
   });
 });
+
+describe("Screaming Frog parity checks", () => {
+  const longTitle = "A title that is comfortably past the thirty character minimum";
+
+  it("url-too-long fires past 115 characters and not before", () => {
+    const short = makePage({ url: "https://x.test/fine", normalizedUrl: "https://x.test/fine" });
+    expect(rule("url-too-long").evaluate(short, config)).toHaveLength(0);
+
+    const long = `https://x.test/${"a".repeat(120)}`;
+    const issues = rule("url-too-long").evaluate(makePage({ url: long, normalizedUrl: long }), config)!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.threshold).toContain("max 115");
+  });
+
+  it("title-too-short fires on pixel width even when the character count passes", () => {
+    // Narrow glyphs: enough characters, too few pixels to fill the SERP slot.
+    const page = makePage({ title: longTitle, pixelWidths: { titlePx: 150, metaDescriptionPx: null } });
+    const issues = rule("title-too-short").evaluate(page, config)!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.threshold).toContain("px");
+  });
+
+  it("title-too-short stays quiet when both character count and pixel width pass", () => {
+    const page = makePage({ title: longTitle, pixelWidths: { titlePx: 420, metaDescriptionPx: null } });
+    expect(rule("title-too-short").evaluate(page, config)).toHaveLength(0);
+  });
+
+  it("meta-description-too-short fires on pixel width even when the character count passes", () => {
+    const desc = "A meta description that clears the seventy character minimum comfortably enough.";
+    const page = makePage({ metaDescription: desc, pixelWidths: { titlePx: null, metaDescriptionPx: 300 } });
+    const issues = rule("meta-description-too-short").evaluate(page, config)!;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.threshold).toContain("px");
+  });
+
+  it("does not fire either pixel rule when pixel width was never captured", () => {
+    const page = makePage({ title: longTitle, pixelWidths: undefined });
+    expect(rule("title-too-short").evaluate(page, config)).toHaveLength(0);
+  });
+});

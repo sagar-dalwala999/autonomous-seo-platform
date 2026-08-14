@@ -5,11 +5,7 @@ import { useRouter } from "next/navigation";
 import { Calendar, ChevronDown, ArrowLeftRight } from "lucide-react";
 import type { RunListItem } from "@/lib/data";
 import { cn } from "@/lib/cn";
-
-function fmt(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
+import { hostnameFor, formatRunTimestamp } from "@/components/shell/run-label";
 
 /** One custom dropdown (not a native <select>) — reused for both the base and head pickers. */
 function RunPicker({ label, runs, selectedId, onChoose }: { label: string; runs: RunListItem[]; selectedId: string | null; onChoose: (runId: string) => void }) {
@@ -44,7 +40,9 @@ function RunPicker({ label, runs, selectedId, onChoose }: { label: string; runs:
         className="inline-flex w-72 items-center gap-1.5 rounded-control border border-border bg-subtle px-3 py-2 text-left text-xs font-medium text-secondary transition-colors duration-150 hover:bg-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         <Calendar size={12} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
-        <span className="truncate">{selected ? `${selected.runId} · ${fmt(selected.startedAt)}` : "Pick a run…"}</span>
+        <span className="truncate" title={selected?.runId}>
+          {selected ? `${hostnameFor(selected.startUrl)} · ${formatRunTimestamp(selected.startedAt)}` : "Pick a run…"}
+        </span>
         <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" className="ml-auto shrink-0" />
       </button>
       {open && (
@@ -68,10 +66,11 @@ function RunPicker({ label, runs, selectedId, onChoose }: { label: string; runs:
                   run.runId === selectedId && "bg-subtle",
                 )}
               >
-                <span className="font-medium text-foreground">{run.runId}</span>
+                <span className="font-medium text-foreground">{hostnameFor(run.startUrl)}</span>
                 <span className="text-faint">
-                  {fmt(run.startedAt)} · {run.coveragePercent}% coverage · {run.successful} pages
+                  {formatRunTimestamp(run.startedAt)} · {run.coveragePercent}% coverage · {run.successful} pages
                 </span>
+                <span className="text-faint/70">{run.runId}</span>
               </button>
             </li>
           ))}
