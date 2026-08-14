@@ -67,7 +67,7 @@ export async function ActionCards({ report, runId }: { report: CrawlSummary; run
   const analysis = await readAnalysisReport(runId);
 
   return (
-    <div className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2", analysis ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
+    <div className={cn("grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4", analysis ? "lg:grid-cols-3 xl:grid-cols-5" : "lg:grid-cols-4")}>
       <ActionCard
         icon={Gauge}
         tint="blue"
@@ -78,7 +78,7 @@ export async function ActionCards({ report, runId }: { report: CrawlSummary; run
         ctaLabel="View failures"
         ctaHref={`/failures${q}`}
         bar={report.coveragePercent}
-        className="sm:col-span-2 lg:col-span-2"
+        className="sm:col-span-2 lg:col-span-1 xl:col-span-2"
       />
       <ActionCard
         icon={AlertOctagon}

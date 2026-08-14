@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 
 export function TableContainer({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("overflow-x-auto rounded-card border border-border bg-card", className)}>
+    <div className={cn("w-full max-w-full overflow-x-auto rounded-card border border-border bg-card", className)} style={{ WebkitOverflowScrolling: "touch" }}>
       <table className="w-full min-w-max border-collapse text-sm">{children}</table>
     </div>
   );

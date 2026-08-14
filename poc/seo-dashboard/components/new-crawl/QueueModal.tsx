@@ -130,7 +130,7 @@ export function QueueModal({ open, onClose, onCancelled }: Props) {
       open={open}
       onClose={onClose}
       size="2xl"
-      className="max-h-[88vh] h-[88vh]"
+      className="max-h-[92vh]"
       title={
         <div className="flex items-center gap-2">
           <ListTodo size={18} className="text-primary" />
@@ -157,7 +157,7 @@ export function QueueModal({ open, onClose, onCancelled }: Props) {
           <ExternalLink size={12} strokeWidth={1.75} />
         </Link>
       }
-      bodyClassName="p-5 flex flex-col gap-4 overflow-y-auto"
+      bodyClassName="p-3 sm:p-5 flex flex-col gap-3 sm:gap-4 overflow-y-auto"
     >
       {/* 4 Metrics Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 shrink-0">

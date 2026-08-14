@@ -37,7 +37,7 @@ function RunPicker({ label, runs, selectedId, onChoose }: { label: string; runs:
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="inline-flex w-72 items-center gap-1.5 rounded-control border border-border bg-subtle px-3 py-2 text-left text-xs font-medium text-secondary transition-colors duration-150 hover:bg-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className="inline-flex w-full sm:w-72 items-center gap-1.5 rounded-control border border-border bg-subtle px-3 py-2 text-left text-xs font-medium text-secondary transition-colors duration-150 hover:bg-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         <Calendar size={12} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
         <span className="truncate" title={selected?.runId}>
@@ -49,7 +49,7 @@ function RunPicker({ label, runs, selectedId, onChoose }: { label: string; runs:
         <ul
           role="listbox"
           aria-label={label}
-          className="absolute left-0 top-[calc(100%+4px)] z-20 max-h-72 w-80 overflow-y-auto rounded-control border border-border bg-elevated py-1 shadow-popover"
+          className="absolute left-0 top-[calc(100%+4px)] z-20 max-h-72 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-control border border-border bg-elevated py-1 shadow-popover"
         >
           {runs.map((run) => (
             <li key={run.runId}>

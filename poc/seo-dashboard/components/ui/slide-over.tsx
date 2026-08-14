@@ -23,7 +23,7 @@ export function SlideOver({
   title,
   children,
   side = "right",
-  widthClassName = "w-[360px]",
+  widthClassName = "w-full max-w-[360px] sm:max-w-[420px]",
   bodyClassName = "p-4",
 }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -72,7 +72,7 @@ export function SlideOver({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "absolute top-0 h-dvh bg-card shadow-popover flex flex-col",
+          "absolute top-0 h-dvh max-w-[92vw] bg-card shadow-popover flex flex-col",
           side === "right" ? "right-0" : "left-0",
           widthClassName,
         )}

@@ -128,7 +128,7 @@ export function ActivityModal({ open, onClose, currentRunId, isCrawling }: Props
           </Link>
         ) : null
       }
-      bodyClassName="p-5 flex flex-col gap-4 overflow-hidden"
+      bodyClassName="p-3 sm:p-5 flex flex-col gap-3 sm:gap-4 overflow-hidden"
     >
       {/* Run Selector Custom Dropdown Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 shrink-0">

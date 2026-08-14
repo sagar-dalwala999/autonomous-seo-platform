@@ -19,7 +19,7 @@ const DOT_CLASSES = { bad: "bg-danger", warn: "bg-warn", ok: "bg-ok", neutral: "
  *  them — so plain tiles stay static rather than looking clickable and doing nothing. */
 export function KpiTiles({ items }: { items: KpiTileSpec[] }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5 sm:gap-3">
       {items.map((t) => {
         const body = (
           <>
