@@ -5,7 +5,9 @@ import { buildHexMatrix, buildTimeline, buildWorkQueue, buildKpiStrip } from "@/
 import { buildMeasurements } from "@/lib/data-measurements";
 import { adaptMeasurements } from "@/lib/measurements-view";
 import { drilldownSupportedIds } from "@/lib/measurements-drilldown";
+import { readAnalysisReport } from "@/lib/data-issues";
 import { EmptyState } from "@/components/ui/empty-state";
+import { HealthScoreHero } from "@/components/overview/health-score-hero";
 import { ActionCards } from "@/components/overview/action-cards";
 import { KpiStripView } from "@/components/overview/kpi-strip";
 import { HexMatrix } from "@/components/charts/hex-matrix";
@@ -55,10 +57,11 @@ export default async function OverviewPage({ searchParams }: Props) {
   const currentIndex = runs.findIndex((r) => r.runId === runId);
   const previousRunItem = currentIndex >= 0 ? runs[currentIndex + 1] : undefined;
 
-  const [[{ report, blocked, failures }, pages], measurementsJson, supportedIds] = await Promise.all([
+  const [[{ report, blocked, failures }, pages], measurementsJson, supportedIds, analysisReport] = await Promise.all([
     Promise.all([getRun(runId), getPages(runId)]),
     buildMeasurements(runId),
     drilldownSupportedIds().then((ids) => [...ids]),
+    readAnalysisReport(runId),
   ]);
 
   if (!report) {
@@ -79,12 +82,18 @@ export default async function OverviewPage({ searchParams }: Props) {
   const kpiStrip = buildKpiStrip(report, pages, previousReport, previousPages);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <OverviewTopbarActions report={report} />
 
-      {/* Run selector lives in topbar (components/shell/topbar.tsx) so it's on every data page. */}
-      <FilterChips report={report} runId={runId} pages={pages} failureCount={failures.length} blockedCount={blocked.length} />
+      {/* Quick Status Navigation Filter Chips */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <FilterChips report={report} runId={runId} pages={pages} failureCount={failures.length} blockedCount={blocked.length} />
+      </div>
 
+      {/* Hero Health Score Gauge & Top Fixes */}
+      <HealthScoreHero report={analysisReport} runId={runId} />
+
+      {/* Compact Action Metric Cards */}
       <ActionCards report={report} runId={runId} />
 
       {/* Commented out to bring measurements module up prominently */}
