@@ -189,6 +189,7 @@ export function FindingRow({
 
   return (
     <details
+      data-finding-rule={group.ruleId}
       className={cn(
         "group cursor-pointer rounded-card bg-card transition-colors duration-150 open:cursor-default",
         muted
@@ -314,7 +315,19 @@ export function FindingRow({
 
         {count > 0 && (
           <div className="mt-3.5">
-            <MetaLabel tone={sevMeta}>Pages</MetaLabel>
+            <div className="flex items-center justify-between gap-2">
+              <MetaLabel tone={sevMeta}>Pages</MetaLabel>
+              {/* Rule-level drill-down: see every page behind this finding in one view. Hidden
+                  when already filtered to this rule (the whole page would just re-show itself). */}
+              {!muted && (
+                <Link
+                  href={`/issues?run=${encodeURIComponent(runId)}&rule=${encodeURIComponent(group.ruleId)}`}
+                  className="text-[11px] font-medium text-primary underline underline-offset-2 hover:opacity-80"
+                >
+                  View all {group.affectedPageCount.toLocaleString()} {group.affectedPageCount === 1 ? "page" : "pages"} for this rule →
+                </Link>
+              )}
+            </div>
             <ul className="mt-1.5 space-y-1.5">
               {group.items.slice(0, PAGES_SHOWN).map((issue, i) => {
                 const pageId = issue.pageId;

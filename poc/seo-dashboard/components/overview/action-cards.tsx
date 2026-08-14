@@ -75,8 +75,8 @@ export async function ActionCards({ report, runId }: { report: CrawlSummary; run
         value={String(report.coveragePercent)}
         unit="%"
         footnote={`${report.successful} of ${report.attempted} attempted`}
-        ctaLabel="View failures"
-        ctaHref={`/failures${q}`}
+        ctaLabel="View failures & blocked"
+        ctaHref={`/sitemap${q}#failures`}
         bar={report.coveragePercent}
         className="sm:col-span-2 lg:col-span-2"
       />
@@ -86,8 +86,8 @@ export async function ActionCards({ report, runId }: { report: CrawlSummary; run
         label="Failed URLs"
         value={String(report.failed)}
         footnote={`Top: ${topFailureClasses(report.failuresByClass)}`}
-        ctaLabel="Open failures"
-        ctaHref={`/failures${q}`}
+        ctaLabel="Open failures & blocked"
+        ctaHref={`/sitemap${q}#failures`}
       />
       <ActionCard
         icon={ShieldOff}

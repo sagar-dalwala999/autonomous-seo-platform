@@ -37,7 +37,7 @@ export function FilterChips({
     { label: "Redirects", count: counts["3xx"], href: `/pages?${q}&status=3xx` },
     { label: "Client errors", count: counts["4xx"], href: `/pages?${q}&status=4xx`, danger: counts["4xx"] > 0 },
     { label: "Server errors", count: counts["5xx"], href: `/pages?${q}&status=5xx`, danger: counts["5xx"] > 0 },
-    { label: "Blocked", count: report.blockedByRobots, href: `/failures?${q}`, danger: report.blockedByRobots > 0 },
+    { label: "Blocked", count: report.blockedByRobots, href: `/sitemap?${q}#failures`, danger: report.blockedByRobots > 0 },
   ];
 
   return (

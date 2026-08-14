@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Globe, Info, Link2, Loader2, RadioTower, ListTodo } from "lucide-react";
+import { AlertTriangle, Globe, Info, Link2, Loader2, ListTodo } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -13,7 +13,10 @@ import { ScopeCards, type CrawlScope } from "@/components/new-crawl/ScopeCards";
 import { SettingSwitch } from "@/components/new-crawl/SettingSwitch";
 import { AuthSection, type AuthMethod } from "@/components/new-crawl/AuthSection";
 import { ProgressPanel } from "@/components/new-crawl/ProgressPanel";
-import { ActivityModal } from "@/components/new-crawl/ActivityModal";
+// ActivityModal — its entry points were removed 2026-08-14: the Activity Log now lives inline in
+// the ProgressPanel (full event stream, same as the Activity Log page), so there is no activity
+// modal anymore. Keep the file for reference; re-import to restore.
+// import { ActivityModal } from "@/components/new-crawl/ActivityModal";
 import { QueueModal } from "@/components/new-crawl/QueueModal";
 import type { CancelledCrawlStatus } from "@/lib/crawl-control-client";
 import type { CrawlStatusResponse, PanelState, RenderMode } from "@/components/new-crawl/types";
@@ -83,7 +86,7 @@ export default function NewCrawlPage() {
 
   const [runId, setRunId] = useState<string | null>(null);
   const [status, setStatus] = useState<CrawlStatusResponse | null>(null);
-  const [activityModalOpen, setActivityModalOpen] = useState(false);
+  // const [activityModalOpen, setActivityModalOpen] = useState(false); — activity log moved inline.
   const [queueModalOpen, setQueueModalOpen] = useState(false);
 
   const router = useRouter();
@@ -267,6 +270,13 @@ export default function NewCrawlPage() {
     router.refresh();
   }
 
+  // Navigates to /issues AFTER the AnalyzeNowButton's own POST + router.refresh() completed, so
+  // the issues page's server component re-reads the freshly written issues.json on arrival.
+  function viewIssues() {
+    if (!runId) return;
+    router.push(`/issues?run=${encodeURIComponent(runId)}`);
+  }
+
   const locked = panelState !== "form";
 
   return (
@@ -281,7 +291,9 @@ export default function NewCrawlPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Button
+          {/* Activity Stream button removed with the modal — the activity log now renders inline
+              in the progress panel (full event stream); only the Queue trigger remains. */}
+          {/* <Button
             type="button"
             variant="outline"
             size="sm"
@@ -294,7 +306,7 @@ export default function NewCrawlPage() {
               className={panelState === "running" ? "text-ok animate-pulse" : "text-primary"}
             />
             <span>Activity Stream</span>
-          </Button>
+          </Button> */}
 
           <Button
             type="button"
@@ -557,7 +569,7 @@ export default function NewCrawlPage() {
             status={status}
             onViewRun={viewRun}
             onViewDashboard={viewDashboard}
-            onOpenActivity={() => setActivityModalOpen(true)}
+            onViewIssues={viewIssues}
             onOpenQueue={() => setQueueModalOpen(true)}
             onRetry={resetForm}
             onCancelled={handleCancelled}
@@ -565,12 +577,12 @@ export default function NewCrawlPage() {
         </Card>
       </div>
 
-      <ActivityModal
+      {/* <ActivityModal
         open={activityModalOpen}
         onClose={() => setActivityModalOpen(false)}
         currentRunId={runId}
         isCrawling={panelState === "running" || panelState === "starting"}
-      />
+      /> */}
 
       <QueueModal
         open={queueModalOpen}

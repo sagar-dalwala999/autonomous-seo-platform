@@ -24,6 +24,10 @@ interface Props {
   initialSource: "durable" | "synthetic";
   urlToPageId: [string, string][];
   className?: string;
+  /** Hide the search + status + kind filter bar (e.g. the New Crawl inline log) while still
+   *  showing every event row — the full stream, just no filters. The Activity Log page leaves
+   *  this off so its filter bar stays. */
+  hideFilters?: boolean;
 }
 
 function appendCapped(prev: ActivityEvent[], next: ActivityEvent): ActivityEvent[] {
@@ -43,7 +47,7 @@ function alreadyTerminal(events: ActivityEvent[]): boolean {
   return events.some((e) => TERMINAL_TYPES.has(e.type));
 }
 
-export function ActivityStreamClient({ runId, initialEvents, initialSource, urlToPageId, className }: Props) {
+export function ActivityStreamClient({ runId, initialEvents, initialSource, urlToPageId, className, hideFilters = false }: Props) {
   const [events, setEvents] = useState<ActivityEvent[]>(initialEvents);
   const [source, setSource] = useState<"durable" | "synthetic">(initialSource);
   const [connState, setConnState] = useState<ConnState>(alreadyTerminal(initialEvents) ? "complete" : "connecting");
@@ -228,19 +232,21 @@ export function ActivityStreamClient({ runId, initialEvents, initialSource, urlT
         )}
       </div>
 
-      <ActivityFilters
-        kindCounts={kindCounts}
-        activeKinds={activeKinds}
-        onToggleKind={toggleKind}
-        onClearKinds={() => setActiveKinds(new Set())}
-        status={status}
-        statusCounts={statusCounts}
-        onStatus={setStatus}
-        search={search}
-        onSearch={setSearch}
-        total={events.length}
-        visible={filtered.length}
-      />
+      {!hideFilters && (
+        <ActivityFilters
+          kindCounts={kindCounts}
+          activeKinds={activeKinds}
+          onToggleKind={toggleKind}
+          onClearKinds={() => setActiveKinds(new Set())}
+          status={status}
+          statusCounts={statusCounts}
+          onStatus={setStatus}
+          search={search}
+          onSearch={setSearch}
+          total={events.length}
+          visible={filtered.length}
+        />
+      )}
 
       <div className="relative min-h-0 flex-1 overflow-hidden rounded-card border border-border bg-card">
         {events.length === 0 ? (

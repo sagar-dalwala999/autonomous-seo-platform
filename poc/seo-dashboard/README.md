@@ -31,8 +31,7 @@ Routes (`find app -name page.tsx` / `-name route.ts`, 2026-08-13 — **10 pages,
 | `/pages/[id]/preview` | Live page / stored screenshot / captured-HTML replay |
 | `/issues` | Analyzer findings grouped by rule, severity + category filters |
 | `/compare` | Crawl-over-crawl diff, computed on the fly |
-| `/failures` | Failures, robots-blocked, and URLs skipped for safety |
-| `/sitemap` | Sitemap + robots.txt cross-reference |
+| `/sitemap` | Sitemap + robots.txt cross-reference, plus failures, robots-blocked, and URLs skipped for safety (merged from the former `/failures` page) |
 | `/new-crawl` | Trigger a crawl, including the Access (auth) panel |
 
 API routes: `/api/crawls`, `/api/crawls/[runId]`, `/api/raw/[runId]/[pageId]`,

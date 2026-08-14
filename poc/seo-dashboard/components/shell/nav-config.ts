@@ -1,4 +1,4 @@
-import { LayoutGrid, History, FileText, AlertTriangle, Map, ShieldAlert, GitCompare, ListTodo, Link2, ImageIcon, GitBranch, Activity, Gauge, type LucideIcon } from "lucide-react";
+import { LayoutGrid, History, FileText, Map, ShieldAlert, GitCompare, ListTodo, Link2, ImageIcon, GitBranch, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -29,7 +29,6 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Findings",
     items: [
       { href: "/issues", label: "What to Fix.", icon: ShieldAlert },
-      { href: "/failures", label: "Failures & Blocked", icon: AlertTriangle },
       { href: "/sitemap", label: "Sitemap & Robots", icon: Map },
     ],
   },
@@ -37,7 +36,10 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Explore pages",
     items: [
       { href: "/pages", label: "Pages", icon: FileText },
-      { href: "/measurements", label: "All Measurements", icon: Gauge },
+      // All Measurements removed from the sidebar per owner request 2026-08-14 — the measurements
+      // grid renders inline on the Overview page. The /measurements route still exists; re-enable
+      // by uncommenting.
+      // { href: "/measurements", label: "All Measurements", icon: Gauge },
       { href: "/links", label: "Links", icon: Link2 },
       { href: "/images", label: "Images", icon: ImageIcon },
       { href: "/redirects", label: "Redirects", icon: GitBranch },
@@ -47,7 +49,10 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Compare & history",
     items: [
       { href: "/compare", label: "Compare", icon: GitCompare },
-      { href: "/activity", label: "Activity", icon: Activity },
+      // Activity Log removed from the sidebar per owner request 2026-08-14 — the New Crawl page
+      // shows the same full event stream inline. The /activity route still exists (unreachable
+      // from the nav); re-enable by uncommenting.
+      // { href: "/activity", label: "Activity", icon: Activity },
     ],
   },
 ];
@@ -57,12 +62,13 @@ export const ROUTE_TITLES: { test: (path: string) => boolean; title: string }[] 
   { test: (p) => p === "/runs", title: "Runs" },
   { test: (p) => p.startsWith("/pages/"), title: "Page detail" },
   { test: (p) => p === "/pages", title: "Pages" },
-  { test: (p) => p === "/failures", title: "Failures & Blocked" },
   { test: (p) => p === "/sitemap", title: "Sitemap & Robots" },
   { test: (p) => p === "/issues", title: "What to Fix." },
   { test: (p) => p === "/compare", title: "Compare" },
-  { test: (p) => p === "/activity", title: "Activity" },
-  { test: (p) => p === "/measurements", title: "All Measurements" },
+  // Activity Log — see the commented-out nav item above; the page is unreachable from the UI.
+  // { test: (p) => p === "/activity", title: "Activity" },
+  // All Measurements — see the commented-out nav item above.
+  // { test: (p) => p === "/measurements", title: "All Measurements" },
   { test: (p) => p === "/queue", title: "Crawl queue" },
   { test: (p) => p === "/links", title: "Links" },
   { test: (p) => p === "/images", title: "Images" },

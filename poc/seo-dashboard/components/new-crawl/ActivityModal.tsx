@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { RadioTower, ExternalLink, RefreshCw, Calendar, ChevronDown, Check, Globe } from "lucide-react";
+import { RadioTower, RefreshCw, ChevronDown, Check, Globe } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ActivityStreamClient } from "@/components/activity/activity-stream-client";
 import { hostnameFor, formatRunTimestamp } from "@/components/shell/run-label";
@@ -34,11 +32,15 @@ export function ActivityModal({ open, onClose, currentRunId, isCrawling }: Props
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (currentRunId) {
-      setSelectedRunId(currentRunId);
-    }
-  }, [currentRunId]);
+  // Follow the parent's current run (a fresh crawl's id) without an effect — same render-time
+  // sync pattern the explorer clients use (adjusting state from a prop transition, not an
+  // effect body, per react-hooks/set-state-in-effect). On mount the initial value already equals
+  // currentRunId, so this only fires when the parent's run actually changes.
+  const [syncedRunId, setSyncedRunId] = useState<string | null>(currentRunId);
+  if (currentRunId && currentRunId !== syncedRunId) {
+    setSyncedRunId(currentRunId);
+    setSelectedRunId(currentRunId);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -50,14 +52,16 @@ export function ActivityModal({ open, onClose, currentRunId, isCrawling }: Props
         const res = await fetch("/api/crawls?pageSize=30", { cache: "no-store" });
         if (res.ok && !cancelled) {
           const data = await res.json();
-          const list: RunItem[] = (data.data || []).map((r: any) => ({
-            runId: r.runId,
-            startUrl: r.startUrl,
-            startedAt: r.startedAt,
-            status: r.status,
-            successful: r.successful,
-            coveragePercent: r.coveragePercent,
-          }));
+          const list: RunItem[] = (data.data || []).map(
+            (r: { runId: string; startUrl: string; startedAt: string; status: "running" | "completed"; successful?: number; coveragePercent?: number }) => ({
+              runId: r.runId,
+              startUrl: r.startUrl,
+              startedAt: r.startedAt,
+              status: r.status,
+              successful: r.successful,
+              coveragePercent: r.coveragePercent,
+            }),
+          );
           setRuns(list);
           if (!selectedRunId && list.length > 0) {
             setSelectedRunId(currentRunId || list[0].runId);
@@ -116,18 +120,21 @@ export function ActivityModal({ open, onClose, currentRunId, isCrawling }: Props
           </Badge>
         ) : null
       }
-      headerRight={
-        selectedRunId ? (
-          <Link
-            href={`/activity?run=${encodeURIComponent(selectedRunId)}`}
-            target="_blank"
-            className="flex items-center gap-1.5 rounded-control border border-border bg-subtle px-3 py-1 text-xs font-medium text-secondary hover:text-foreground hover:border-border-strong transition-colors"
-          >
-            <span>Open full screen</span>
-            <ExternalLink size={12} strokeWidth={1.75} />
-          </Link>
-        ) : null
-      }
+      // "Open full screen" link to /activity removed with the Activity Log sidebar move — the
+      // Activity Log now lives here (New Crawl) showing the full event stream, and the old
+      // full-page stream is no longer linked from anywhere. Re-enable by uncommenting.
+      // headerRight={
+      //   selectedRunId ? (
+      //     <Link
+      //       href={`/activity?run=${encodeURIComponent(selectedRunId)}`}
+      //       target="_blank"
+      //       className="flex items-center gap-1.5 rounded-control border border-border bg-subtle px-3 py-1 text-xs font-medium text-secondary hover:text-foreground hover:border-border-strong transition-colors"
+      //     >
+      //       <span>Open full screen</span>
+      //       <ExternalLink size={12} strokeWidth={1.75} />
+      //     </Link>
+      //   ) : null
+      // }
       bodyClassName="p-5 flex flex-col gap-4 overflow-hidden"
     >
       {/* Run Selector Custom Dropdown Bar */}

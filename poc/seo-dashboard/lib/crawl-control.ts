@@ -144,6 +144,68 @@ export async function reanalyzeCrawl(runId: string): Promise<{ started: true }> 
   return { started: true };
 }
 
+/** The three analysis passes an in-app "Analyze now" runs, in dependency order: the rules engine
+ *  first (writes issues.json), then the automation classifier (reads issues.json, writes
+ *  automation-report.json), then the fix-plan generator (reads issues.json, writes fix-plan.json). */
+const ANALYZE_STEPS: { entry: string; artifact: string }[] = [
+  { entry: "src/analysis/cli.ts", artifact: "issues.json" },
+  { entry: "src/analysis/automation/cli.ts", artifact: "automation-report.json" },
+  { entry: "src/analysis/fixplan/cli.ts", artifact: "fix-plan.json" },
+];
+
+/** Runs a single analysis CLI to completion, appending its output to the run's crawl.log (same
+ *  log the crawl and post-crawl auto-analyze write to), and throws with a readable message on a
+ *  non-zero exit or timeout — an awaited call either fully succeeds or reports exactly which step
+ *  failed, so a partial chain (issues.json written but automation/fixplan missing) can never be
+ *  mistaken for success by the caller. */
+async function runAnalyzeStepAndWait(runId: string, step: string, timeoutMs: number): Promise<void> {
+  const runDir = path.join(RUNS_DIR, runId);
+  const fd = openSync(path.join(runDir, "crawl.log"), "a");
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, ["--import", "tsx", step, "--run", runId], {
+      windowsHide: true,
+      cwd: CRAWLER_DIR,
+      shell: false,
+      stdio: ["ignore", fd, fd],
+      env: process.env,
+    });
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`analysis step "${step}" timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error(`analysis step "${step}" exited with code ${code} — see crawl.log`));
+    });
+  }).finally(() => closeSync(fd));
+}
+
+/** Full in-app analyze: runs the rules engine, automation classifier, and fix-plan generator in
+ *  sequence and AWAITS each, so by the time this resolves the run has issues.json,
+ *  automation-report.json, AND fix-plan.json — the three artifacts the Issues page reads. This is
+ *  the awaited counterpart to reanalyzeCrawl (fire-and-forget) and what the "Analyze now" button
+ *  POSTs to; the mute flow's reanalyzeAndWait stays as-is (rules engine only, that's all a mute
+ *  needs). */
+export async function analyzeRunFull(runId: string, timeoutMs = 180_000): Promise<{ artifacts: string[] }> {
+  const runDir = path.join(RUNS_DIR, runId);
+  try {
+    await stat(runDir);
+  } catch {
+    throw new CancelError(`No run directory found for "${runId}".`, 404);
+  }
+  const artifacts: string[] = [];
+  for (const step of ANALYZE_STEPS) {
+    await runAnalyzeStepAndWait(runId, step.entry, timeoutMs);
+    artifacts.push(step.artifact);
+  }
+  return { artifacts };
+}
+
 export interface RunMeta {
   label: string | null;
   notes: string | null;

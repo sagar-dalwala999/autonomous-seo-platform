@@ -6,9 +6,11 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Menu, PanelLeftOpen } from "lucide-react";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
+import { CommandPalette } from "./command-palette";
 import { NAV_SECTIONS } from "./nav-config";
 import { SlideOver } from "@/components/ui/slide-over";
 import { readStoredCollapsed, writeStoredCollapsed } from "@/lib/sidebar-collapse";
+import { pickDefaultRun } from "@/lib/run-selection";
 import { cn } from "@/lib/cn";
 import type { RunListItem } from "@/lib/data";
 
@@ -41,6 +43,9 @@ export function AppShell({ runs, runCount, reportPath, children }: Props) {
   // Carries the selected run across nav (icon rails) — destination pages fall back to latest on
   // an absent/invalid ?run= (lib/data.ts resolveRunId), so this is safe to forward as-is.
   const run = searchParams.get("run");
+  // Effective run for the command palette's rule index: same rule as the RunSelector (valid ?run=
+  // wins, otherwise the newest substantial run) so the palette always has a run to fetch rules for.
+  const currentRun = (run && runs.find((r) => r.runId === run)) || pickDefaultRun(runs);
   const withRun = (href: string) => (run ? `${href}?run=${encodeURIComponent(run)}` : href);
 
   function iconLink(item: (typeof allItems)[number]) {
@@ -119,6 +124,8 @@ export function AppShell({ runs, runCount, reportPath, children }: Props) {
         <Topbar runs={runs} />
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-6">{children}</main>
       </div>
+
+      <CommandPalette runs={runs} runId={currentRun?.runId ?? null} />
     </div>
   );
 }

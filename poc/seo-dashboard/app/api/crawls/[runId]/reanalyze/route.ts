@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
-import { reanalyzeCrawl, CancelError } from "@/lib/crawl-control";
+import { analyzeRunFull, CancelError } from "@/lib/crawl-control";
 import { isSafeId, badRequest } from "@/lib/api-shared";
 import { requireApiSession } from "@/lib/auth-guard";
 
-/** POST /crawls/:id/reanalyze — re-runs the rules engine over stored data, no re-crawl (spec §7).
- *  Spawns the same analysis CLI crawl-runner.ts's post-crawl hook uses. Real: overwrites
- *  storage/runs/:id/issues.json in place once the child process finishes (async, not awaited). */
+/** POST /crawls/:id/reanalyze — the in-app "Analyze now": re-runs the rules engine AND the
+ *  automation classifier AND the fix-plan generator over stored data, no re-crawl (spec §7 +
+ *  FR-3.7/FR-3.8 outputs). Awaits each step, so when this resolves the run has issues.json,
+ *  automation-report.json, and fix-plan.json — the "Not classified"/"fix plan not generated"
+ *  states are gone until a fresh chain genuinely produces those files. The client posts, then
+ *  router.refresh()s to pick up the new artifacts. */
 export async function POST(_request: Request, { params }: { params: Promise<{ runId: string }> }) {
   const __auth = await requireApiSession();
   if ("response" in __auth) return __auth.response;
@@ -13,11 +16,16 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ru
   const { runId } = await params;
   if (!isSafeId(runId)) return badRequest("Invalid runId.");
   try {
-    await reanalyzeCrawl(runId);
-    return NextResponse.json({ analysisId: runId, status: "started" }, { status: 202 });
+    const { artifacts } = await analyzeRunFull(runId);
+    return NextResponse.json({ analysisId: runId, status: "done", artifacts });
   } catch (err) {
-    if (err instanceof CancelError) return NextResponse.json({ error: { code: "NOT_FOUND", message: err.message } }, { status: err.status });
+    if (err instanceof CancelError) {
+      return NextResponse.json({ error: { code: "NOT_FOUND", message: err.message } }, { status: err.status });
+    }
     console.error("[api/crawls/:id/reanalyze] unexpected error", err);
-    return NextResponse.json({ error: { code: "INTERNAL_ERROR", message: "Failed to start reanalysis." } }, { status: 500 });
+    return NextResponse.json(
+      { error: { code: "INTERNAL_ERROR", message: err instanceof Error ? err.message : "Failed to analyze run." } },
+      { status: 500 },
+    );
   }
 }

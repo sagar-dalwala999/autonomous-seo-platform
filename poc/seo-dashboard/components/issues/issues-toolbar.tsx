@@ -104,6 +104,10 @@ interface Props {
   onShow: (v: string) => void;
   severity: IssueSeverity | null;
   onSeverity: (v: IssueSeverity | null) => void;
+  /** Category (rulebook area) filter — options built from the areas present in the current view. */
+  category: string | null;
+  onCategory: (v: string | null) => void;
+  categoryOptions: { value: string; label: string; count?: number }[];
   automation: AutomationLevel | "not-classified" | null;
   onAutomation: (v: AutomationLevel | "not-classified" | null) => void;
   automationOptions: { value: string; label: string; count?: number }[];
@@ -127,6 +131,9 @@ export function IssuesToolbar({
   onShow,
   severity,
   onSeverity,
+  category,
+  onCategory,
+  categoryOptions,
   automation,
   onAutomation,
   automationOptions,
@@ -178,6 +185,15 @@ export function IssuesToolbar({
             onChange={(v) => onSeverity(v === "any" ? null : (v as IssueSeverity))}
             options={SEVERITY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
           />
+          {categoryOptions.length > 0 && (
+            <Dropdown
+              label="Area"
+              value={category ?? "any"}
+              allValue="any"
+              onChange={(v) => onCategory(v === "any" ? null : v)}
+              options={[{ value: "any", label: "All areas" }, ...categoryOptions]}
+            />
+          )}
           <Dropdown
             label="Fix type"
             value={automation ?? "any"}
