@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CopyButton } from "@/components/ui/copy-button";
 import type { CrawledPageWithId } from "@/lib/types";
 import { statusTone } from "@/lib/explorer-shared";
 import { ImageThumb } from "./image-thumb";
@@ -39,7 +40,10 @@ export function HeaderBand({ page, runId }: { page: CrawledPageWithId; runId: st
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="break-all text-base font-semibold text-foreground">{page.url}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="break-all text-base font-semibold text-foreground">{page.url}</p>
+            <CopyButton text={page.url} label="Copy page URL" />
+          </div>
           <p className="mt-1 text-xs text-faint">
             fetched {page.fetchedAt ? new Date(page.fetchedAt).toLocaleString() : "—"} ·{" "}
             {page.performance.responseTimeMs !== null ? `${page.performance.responseTimeMs}ms` : "no timing"} · run {runId}
@@ -158,14 +162,15 @@ export function MetadataPanel({ page }: { page: CrawledPageWithId }) {
             {page.canonical === null ? (
               <span className="text-faint">— (none)</span>
             ) : (
-              <>
+              <div className="flex items-center gap-1.5 min-w-0">
                 <span className="truncate">{page.canonical}</span>
+                <CopyButton text={page.canonical} label="Copy canonical URL" />
                 {canonicalMismatch && (
                   <Badge tone="warn" className="shrink-0">
                     points elsewhere
                   </Badge>
                 )}
-              </>
+              </div>
             )}
           </dd>
         </div>
@@ -264,7 +269,12 @@ export function ImagesPanel({ page }: { page: CrawledPageWithId }) {
                   <td className="px-4 py-2.5">
                     <ImageThumb src={img.url} alt={img.alt ?? ""} />
                   </td>
-                  <td className="max-w-xs truncate px-4 py-2.5">{img.url}</td>
+                  <td className="max-w-xs px-4 py-2.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="truncate font-mono text-xs" title={img.url}>{img.url}</span>
+                      <CopyButton text={img.url} label="Copy image URL" />
+                    </div>
+                  </td>
                   <td className="px-4 py-2.5">
                     {img.alt === null ? (
                       <Badge tone="danger">missing</Badge>
@@ -337,9 +347,11 @@ export function RedirectChainPanel({ page }: { page: CrawledPageWithId }) {
           {page.redirectChain.map((hop, i) => (
             <li key={i} className="flex flex-wrap items-center gap-2 rounded-control border border-border bg-subtle px-3 py-2">
               <span className="tabular-nums text-faint">#{i + 1}</span>
-              <span className="truncate text-foreground">{hop.from}</span>
+              <span className="truncate text-foreground font-mono text-xs max-w-[200px]" title={hop.from}>{hop.from}</span>
+              <CopyButton text={hop.from} label="Copy origin URL" />
               <ArrowRight size={14} strokeWidth={1.75} className="shrink-0 text-faint" aria-hidden="true" />
-              <span className="truncate text-foreground">{hop.to}</span>
+              <span className="truncate text-foreground font-mono text-xs max-w-[200px]" title={hop.to}>{hop.to}</span>
+              <CopyButton text={hop.to} label="Copy destination URL" />
               <Badge tone="warn" className="ml-auto shrink-0">
                 {hop.statusCode}
               </Badge>
@@ -347,7 +359,9 @@ export function RedirectChainPanel({ page }: { page: CrawledPageWithId }) {
           ))}
           {page.finalUrl && (
             <li className="flex items-center gap-2 px-3 text-xs text-faint">
-              Final: {page.finalUrl}
+              <span>Final:</span>
+              <span className="truncate text-foreground font-mono text-xs max-w-[300px]" title={page.finalUrl}>{page.finalUrl}</span>
+              <CopyButton text={page.finalUrl} label="Copy final URL" />
               {page.statusCode !== null && (
                 <Badge tone={statusTone(page.statusCode)} className="ml-1">
                   {page.statusCode}

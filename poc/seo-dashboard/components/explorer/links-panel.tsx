@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Chip } from "@/components/ui/chip";
+import { CopyButton } from "@/components/ui/copy-button";
 import type { LinkRecord } from "@/lib/types";
 
 export function LinksPanel({ links }: { links: LinkRecord[] }) {
@@ -48,9 +49,21 @@ export function LinksPanel({ links }: { links: LinkRecord[] }) {
               {filtered.map((link, i) => (
                 <tr key={i} className="min-h-11 border-b border-border last:border-0 hover:bg-subtle">
                   <td className="max-w-[16ch] truncate px-4 py-2.5">{link.anchor || <span className="text-faint">(empty)</span>}</td>
-                  <td className="max-w-xs truncate px-4 py-2.5">{link.target}</td>
-                  <td className="max-w-xs truncate px-4 py-2.5 text-secondary">
-                    {link.targetNormalized ?? <span className="text-faint">null</span>}
+                  <td className="max-w-xs px-4 py-2.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="truncate font-mono text-xs" title={link.target}>{link.target}</span>
+                      <CopyButton text={link.target} label="Copy target link" />
+                    </div>
+                  </td>
+                  <td className="max-w-xs px-4 py-2.5 text-secondary">
+                    {link.targetNormalized ? (
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="truncate font-mono text-xs" title={link.targetNormalized}>{link.targetNormalized}</span>
+                        <CopyButton text={link.targetNormalized} label="Copy normalized link" />
+                      </div>
+                    ) : (
+                      <span className="text-faint">null</span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5">
                     <Badge tone={link.type === "internal" ? "neutral" : "warn"}>{link.type}</Badge>

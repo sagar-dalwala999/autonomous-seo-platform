@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableContainer, TableHead, Th, Tr, Td } from "@/components/ui/table";
+import { CopyButton } from "@/components/ui/copy-button";
 import { cn } from "@/lib/cn";
 import {
   statusTone,
@@ -147,14 +148,17 @@ export function PagesExplorerClient({ rows, runId }: { rows: ExplorerRow[]; runI
   function renderRow(row: ExplorerRow) {
     return (
       <Tr key={row.key}>
-        <Td className="max-w-md truncate normal-case">
-          {row.pageId ? (
-            <Link href={`/pages/${row.pageId}?${detailQuery}`} className="text-primary underline underline-offset-2">
-              {row.url}
-            </Link>
-          ) : (
-            <span className="text-foreground">{row.url}</span>
-          )}
+        <Td className="max-w-md normal-case">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {row.pageId ? (
+              <Link href={`/pages/${row.pageId}?${detailQuery}`} className="truncate text-primary underline underline-offset-2" title={row.url}>
+                {row.url}
+              </Link>
+            ) : (
+              <span className="truncate text-foreground" title={row.url}>{row.url}</span>
+            )}
+            <CopyButton text={row.url} label="Copy page URL" />
+          </div>
         </Td>
         <Td>
           {row.bucket === "failed" ? (

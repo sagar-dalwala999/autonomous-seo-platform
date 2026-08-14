@@ -1,4 +1,7 @@
-import { CircleSlash2, ListFilter } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { CircleSlash2, Info, ArrowUpRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/cn";
 import type { MeasurementCardVM } from "@/lib/measurements-view";
@@ -8,46 +11,94 @@ interface Props {
   onViewPages?: (id: string, label: string) => void;
 }
 
-/** `available:false` renders visibly different from a real zero — dashed border, muted icon,
- *  the stated reason instead of a number. A grid where "0 broken links" secretly means "never
- *  checked" is the exact dishonesty this build has been correcting all day. */
 export function MeasurementCard({ card, onViewPages }: Props) {
+  const [showTooltip, setShowTooltip] = useState(false);
   const partial = card.available && card.sampleSize !== null && card.totalPages !== null && card.sampleSize < card.totalPages;
+  const explainerText = card.available ? card.explainer : card.unavailableReason ?? card.explainer;
 
   return (
     <Card
       hoverLift={card.available}
-      className={cn("flex h-full flex-col gap-2", !card.available && "border-dashed border-border-strong bg-subtle shadow-none")}
+      className={cn(
+        "relative flex flex-col justify-between p-3.5 rounded-xl border transition-all duration-150",
+        showTooltip ? "z-40" : "z-0 hover:z-30",
+        card.available
+          ? "border-border bg-card hover:border-border-strong"
+          : "border-dashed border-border-strong/70 bg-subtle/50 shadow-none",
+      )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-faint">{card.label}</p>
-        {!card.available && <CircleSlash2 size={14} strokeWidth={1.75} className="shrink-0 text-faint" aria-hidden="true" />}
+      {/* Top Header: Label & Tooltip Info Icon */}
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <p className="truncate text-xs font-semibold text-secondary" title={card.label}>
+          {card.label}
+        </p>
+
+        <div className="relative shrink-0 flex items-center">
+          <button
+            type="button"
+            onMouseEnter={() => setShowTooltip(true)}
+            onMouseLeave={() => setShowTooltip(false)}
+            onFocus={() => setShowTooltip(true)}
+            onBlur={() => setShowTooltip(false)}
+            onClick={() => setShowTooltip((s) => !s)}
+            className="text-faint hover:text-foreground transition-colors p-0.5 rounded focus:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+            aria-label={`Description for ${card.label}`}
+          >
+            {!card.available ? (
+              <CircleSlash2 size={13} strokeWidth={2} className="text-warn" aria-hidden="true" />
+            ) : (
+              <Info size={13} strokeWidth={2} aria-hidden="true" />
+            )}
+          </button>
+
+          {/* Hover Tooltip Popup */}
+          {showTooltip && (
+            <div
+              role="tooltip"
+              className="absolute right-0 top-6 z-[100] w-64 rounded-xl border border-border-strong bg-elevated p-3 text-xs text-foreground shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150 pointer-events-none"
+            >
+              <p className="font-semibold text-foreground mb-1">{card.label}</p>
+              <p className="text-secondary leading-relaxed">{explainerText}</p>
+              {partial && (
+                <p className="mt-2 text-[11px] text-faint border-t border-border/50 pt-1.5">
+                  Sample: {card.sampleSize!.toLocaleString()} of {card.totalPages!.toLocaleString()} pages analyzed.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {card.available ? (
-        <div className="text-2xl font-semibold leading-tight tabular-nums text-foreground">{card.display ?? card.value ?? "—"}</div>
-      ) : (
-        <div className="text-sm font-medium text-faint">Not available</div>
-      )}
+      {/* Metric Value */}
+      <div className="my-1.5">
+        {card.available ? (
+          <div className="text-xl font-bold tracking-tight tabular-nums text-foreground">
+            {card.display ?? card.value ?? "—"}
+          </div>
+        ) : (
+          <div className="text-xs font-medium text-faint">Not available</div>
+        )}
+      </div>
 
-      <p className="flex-1 text-xs leading-relaxed text-secondary">{card.available ? card.explainer : card.unavailableReason ?? card.explainer}</p>
-
-      {partial && (
-        <p className="text-[11px] text-faint">
-          Based on {card.sampleSize!.toLocaleString()} of {card.totalPages!.toLocaleString()} pages — not full-run coverage.
-        </p>
-      )}
-
-      {card.available && onViewPages && (
-        <button
-          type="button"
-          onClick={() => onViewPages(card.id, card.label)}
-          className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-control border border-border bg-subtle px-2 py-1 text-xs font-medium text-secondary outline-none transition-colors duration-150 hover:bg-elevated hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <ListFilter size={12} strokeWidth={2} aria-hidden="true" />
-          View matching pages
-        </button>
-      )}
+      {/* Footer / Action */}
+      <div className="min-h-[20px] flex items-center justify-between text-[11px]">
+        {card.available && onViewPages ? (
+          <button
+            type="button"
+            onClick={() => onViewPages(card.id, card.label)}
+            className="inline-flex items-center gap-1 font-medium text-primary hover:underline outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-primary rounded"
+          >
+            <span>Matching pages</span>
+            <ArrowUpRight size={11} strokeWidth={2} aria-hidden="true" />
+          </button>
+        ) : partial ? (
+          <span className="text-[11px] text-faint truncate">
+            {card.sampleSize} / {card.totalPages} pages
+          </span>
+        ) : (
+          <span />
+        )}
+      </div>
     </Card>
   );
 }
