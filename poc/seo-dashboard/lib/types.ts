@@ -265,6 +265,20 @@ export interface SkippedUrlRecord {
   foundOn: string | null;
 }
 
+/** `/llms.txt` presence, fetched alongside robots.txt (mirrors the crawler's LlmsTxtInfo).
+ *  Reported for information only — no rule in the rulebook may score it. Optional on
+ *  RobotsEvidence so runs stored before this field parse unchanged. */
+export interface LlmsTxtInfo {
+  present: boolean;
+  url: string;
+  statusCode: number | null;
+  bytes: number;
+  fetchedAt: string;
+  /** The file body when `present`. Absent on runs crawled by crawler versions that stored
+   *  metadata only — treat absence as "content not stored", never as an empty file. */
+  content?: string | null;
+}
+
 export interface RobotsEvidence {
   url: string;
   statusCode: number | null;
@@ -272,6 +286,8 @@ export interface RobotsEvidence {
   sitemaps: string[];
   parseStatus: "ok" | "empty" | "unavailable" | "error";
   fetchedAt: string;
+  /** Absent on runs crawled before llms.txt probing shipped. */
+  llmsTxt?: LlmsTxtInfo;
 }
 
 export interface SitemapUrlEntry {
