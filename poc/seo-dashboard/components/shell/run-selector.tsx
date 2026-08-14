@@ -54,13 +54,16 @@ export function RunSelector({ runs }: { runs: RunListItem[] }) {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title={current.runId}
-        className="inline-flex items-center gap-1.5 rounded-pill border border-border-strong bg-elevated px-3 py-1.5 text-xs font-medium text-foreground shadow-card transition-colors duration-150 hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        title={`${current.runId} (${current.startUrl})`}
+        className="inline-flex items-center gap-1 sm:gap-1.5 rounded-pill border border-border-strong bg-elevated px-2 sm:px-3 py-1.5 text-xs font-medium text-foreground shadow-card transition-colors duration-150 hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary max-w-[110px] min-[400px]:max-w-[150px] sm:max-w-none"
       >
         <HealthDot score={current.healthScore} analyzed={current.analyzed} />
-        <Calendar size={12} strokeWidth={1.75} aria-hidden="true" />
-        {hostnameFor(current.startUrl)} · {formatRunTimestamp(current.startedAt)}
-        <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+        <Calendar size={12} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
+        <span className="truncate">
+          <span className="font-semibold">{hostnameFor(current.startUrl)}</span>
+          <span className="hidden md:inline text-faint"> · {formatRunTimestamp(current.startedAt)}</span>
+        </span>
+        <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
       </button>
       {open && (
         <ul

@@ -37,7 +37,7 @@ export function MeasurementsGrid({ runId, data, drilldownSupportedIds }: Props) 
             <h3 className="text-xs font-semibold uppercase tracking-wider text-secondary">{category}</h3>
             <span className="text-xs text-faint">{cards.length} metrics</span>
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          <div className="grid grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5 sm:gap-3">
             {cards.map((card) => (
               <MeasurementCard
                 key={card.id}

@@ -128,7 +128,7 @@ export function QueueClient({ initialJobs }: { initialJobs: QueueJob[] }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card>
           <StatValue value={meta ? meta.runningCount : "—"} caption="Running" />
         </Card>
@@ -161,7 +161,7 @@ export function QueueClient({ initialJobs }: { initialJobs: QueueJob[] }) {
             />
           </div>
           <p className="truncate text-xs text-secondary">{runningJob.startUrl}</p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 sm:gap-3">
             <StatValue value={elapsed(runningJob.startedAt, null)} caption="Elapsed" />
             <StatValue value={progress?.crawled ?? "—"} caption="Crawled" />
             <StatValue value={progress?.discovered ?? "—"} caption="Discovered" />

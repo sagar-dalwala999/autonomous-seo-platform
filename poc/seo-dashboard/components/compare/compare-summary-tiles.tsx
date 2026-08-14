@@ -5,7 +5,7 @@ import type { CrawlDiff } from "@/lib/data-compare";
 
 export function CompareSummaryTiles({ diff }: { diff: CrawlDiff }) {
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
       <Card className="flex items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-ok-bg text-ok">
           <PlusCircle size={18} strokeWidth={1.75} aria-hidden="true" />

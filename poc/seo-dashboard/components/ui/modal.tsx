@@ -88,7 +88,7 @@ export function Modal({
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-5 md:p-8">
       <div
         className="fixed inset-0 bg-black/65 backdrop-blur-sm transition-opacity animate-in fade-in"
         onClick={onClose}
@@ -99,16 +99,16 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 flex max-h-[90vh] w-full flex-col rounded-2xl md:rounded-[22px] border border-border/80 bg-card shadow-2xl overflow-hidden",
+          "relative z-10 flex max-h-[94vh] w-full flex-col rounded-xl sm:rounded-2xl md:rounded-[22px] border border-border/80 bg-card shadow-2xl overflow-hidden",
           SIZE_MAP[size],
           className,
         )}
       >
-        <div className="flex items-center justify-between border-b border-border px-6 py-4 bg-card shrink-0">
+        <div className="flex items-center justify-between border-b border-border px-4 sm:px-6 py-3.5 bg-card shrink-0">
           <div className="flex min-w-0 items-center gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-semibold text-foreground truncate">{title}</h2>
+                <h2 className="text-sm sm:text-base font-semibold text-foreground truncate">{title}</h2>
                 {badge}
               </div>
               {description && <p className="mt-0.5 text-xs text-secondary">{description}</p>}
@@ -129,7 +129,7 @@ export function Modal({
 
         <div className={cn("flex-1 overflow-y-auto min-h-0", bodyClassName)}>{children}</div>
 
-        {footer && <div className="border-t border-border px-6 py-3.5 bg-subtle/40 shrink-0">{footer}</div>}
+        {footer && <div className="border-t border-border px-4 sm:px-6 py-3 bg-subtle/40 shrink-0">{footer}</div>}
       </div>
     </div>,
     document.body,

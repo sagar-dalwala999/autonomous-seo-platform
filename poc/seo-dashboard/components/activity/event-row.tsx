@@ -50,10 +50,10 @@ export function EventRow({ event, pageId, runId, style }: Props) {
   }
 
   return (
-    <div style={style} className="flex items-center gap-3 px-3 font-mono text-xs box-border border-b border-border/40 overflow-hidden">
-      <span className="w-[68px] shrink-0 tabular-nums text-faint">{formatTime(event.ts)}</span>
-      <span className={cn("w-[168px] shrink-0 truncate font-sans font-medium", TONE_TEXT[tone])}>{meta.label}</span>
-      <span className="w-[52px] shrink-0 tabular-nums">
+    <div style={style} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 font-mono text-xs box-border border-b border-border/40 overflow-hidden">
+      <span className="w-[58px] sm:w-[68px] shrink-0 tabular-nums text-faint text-[11px] sm:text-xs">{formatTime(event.ts)}</span>
+      <span className={cn("w-[110px] sm:w-[168px] shrink-0 truncate font-sans font-medium text-[11px] sm:text-xs", TONE_TEXT[tone])}>{meta.label}</span>
+      <span className="w-[38px] sm:w-[52px] shrink-0 tabular-nums">
         {event.statusCode !== null ? <span className={TONE_TEXT[statusTone(event.statusCode)]}>{event.statusCode}</span> : <span className="text-faint">—</span>}
       </span>
       <span className="min-w-0 flex-1 truncate text-secondary" title={event.url ?? undefined}>
