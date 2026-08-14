@@ -461,3 +461,31 @@ export interface AnalysisReport {
   mutedRuleIds?: string[];
   graphAvailable?: boolean;
 }
+
+export interface FixPlanItem {
+  rule: string;
+  issue: string;
+  url: string | null;
+  pageId: string | null;
+  action: string;
+  where: string;
+  change: string | string[];
+  note: string;
+}
+
+export interface FixPlanSkip {
+  rule: string;
+  url: string | null;
+  reason: string;
+}
+
+export interface FixPlan {
+  runId: string;
+  generatedAt: string;
+  applied: boolean;
+  note: string;
+  rules: { id: string; findings: number }[];
+  totalChanges: number;
+  items: FixPlanItem[];
+  skipped: FixPlanSkip[];
+}

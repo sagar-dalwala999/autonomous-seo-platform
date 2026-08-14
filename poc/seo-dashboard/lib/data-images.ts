@@ -8,6 +8,8 @@ import { getPages } from "./data";
 
 export type AltState = "missing" | "empty" | "described";
 
+export type SizeCategory = "normal" | "large" | "oversized";
+
 export interface ImageRow {
   key: string;
   url: string;
@@ -17,6 +19,8 @@ export interface ImageRow {
   height: number | null;
   format: string | null;
   hasDimensions: boolean;
+  sizeBytes: number | null;
+  sizeCategory: SizeCategory | null;
   usageCount: number;
   pages: { pageId: string; url: string }[];
 }
@@ -27,16 +31,28 @@ function altStateOf(alt: string | null): AltState {
   return "described";
 }
 
+function sizeCategoryOf(bytes: number | null): SizeCategory | null {
+  if (bytes === null) return null;
+  if (bytes > 500 * 1024) return "oversized";
+  if (bytes > 100 * 1024) return "large";
+  return "normal";
+}
+
 export async function buildImageRows(runId: string): Promise<ImageRow[]> {
   const pages = await getPages(runId);
   const rows = new Map<string, ImageRow>();
 
   for (const p of pages) {
     for (const img of p.images) {
+      const bytes = (img as { sizeBytes?: number | null }).sizeBytes ?? null;
       const existing = rows.get(img.url);
       if (existing) {
         existing.usageCount++;
         if (existing.pages.length < 50) existing.pages.push({ pageId: p.pageId, url: p.url });
+        if (existing.sizeBytes === null && bytes !== null) {
+          existing.sizeBytes = bytes;
+          existing.sizeCategory = sizeCategoryOf(bytes);
+        }
         // First non-missing alt wins if the page-level record disagrees across usages.
         if (existing.altState === "missing" && img.alt !== null) {
           existing.alt = img.alt;
@@ -53,6 +69,8 @@ export async function buildImageRows(runId: string): Promise<ImageRow[]> {
         height: img.height,
         format: img.format,
         hasDimensions: img.width !== null && img.height !== null,
+        sizeBytes: bytes,
+        sizeCategory: sizeCategoryOf(bytes),
         usageCount: 1,
         pages: [{ pageId: p.pageId, url: p.url }],
       });

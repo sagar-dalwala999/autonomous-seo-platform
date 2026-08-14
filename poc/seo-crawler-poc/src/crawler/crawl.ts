@@ -576,7 +576,16 @@ async function settleImageDecode(page: Page): Promise<void> {
     page
       .evaluate(async () => {
         const imgs = Array.from(document.querySelectorAll("img"));
-        await Promise.all(imgs.map((img) => (img.decode ? img.decode().catch(() => {}) : Promise.resolve())));
+        await Promise.all(
+          imgs.map((img) =>
+            img.decode
+              ? Promise.race([
+                  img.decode(),
+                  new Promise((resolve) => setTimeout(resolve, 1500)),
+                ]).catch(() => {})
+              : Promise.resolve()
+          )
+        );
       })
       .catch(() => {});
   await decodeAll();
@@ -1293,7 +1302,7 @@ export async function runCrawl(
         maxRequestsPerCrawl: budget,
         maxConcurrency: options.concurrency,
         maxRequestsPerMinute: Math.max(1, Math.round(options.maxRequestsPerSecond * 60)),
-        requestHandlerTimeoutSecs: REQUEST_HANDLER_TIMEOUT_SECS,
+        requestHandlerTimeoutSecs: 60,
         maxRequestRetries: MAX_REQUEST_RETRIES,
         errorHandler: async ({ request }, error) => backoffOnRateLimit(request, error as Error),
         // Same honesty rule as the Cheerio pass — Chromium's own UA would otherwise be sent.
@@ -1350,7 +1359,7 @@ export async function runCrawl(
           // cheap DOM-size metric until it's stable for 2 ticks (4 when still empty — genuinely
           // blank pages exit early), capped by budget. Bottom-scroll first so
           // IntersectionObserver lazy-loaders fire; back to top before capture.
-          await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+          await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
           // Vitals FIRST, before the settle scroll below — see the ordering constraint further down.
           const labWebVitals = await readLabWebVitals(page, blockedResourceTypes);
           await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});

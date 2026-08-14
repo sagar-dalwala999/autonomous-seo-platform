@@ -2,7 +2,8 @@
 
 import { SlideOver } from "@/components/ui/slide-over";
 import { Button } from "@/components/ui/button";
-import type { FixPlanItem } from "@/lib/data-issue-extras";
+import { DeveloperFixCard } from "./developer-fix-card";
+import type { FixPlanItem } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -30,7 +31,7 @@ export function FixPlanPanel({ open, onClose, ruleId, items, available, runId }:
   }
 
   return (
-    <SlideOver open={open} onClose={onClose} title={ruleId ? `Fix plan · ${ruleId}` : "Fix plan"} widthClassName="w-[420px]">
+    <SlideOver open={open} onClose={onClose} title={ruleId ? `Fix plan · ${ruleId}` : "Fix plan"} widthClassName="w-[520px]">
       {!available ? (
         <p className="text-sm text-faint">
           Fix plan not generated for this run yet — run{" "}
@@ -40,23 +41,20 @@ export function FixPlanPanel({ open, onClose, ruleId, items, available, runId }:
       ) : items.length === 0 ? (
         <p className="text-sm text-faint">No auto-safe fix for this rule — either it isn&apos;t classified auto-safe, or no concrete value could be computed for the affected pages.</p>
       ) : (
-        <div className="space-y-3">
-          <p className="text-xs text-faint">
-            These changes are safe to apply automatically. This tool never applies them — <strong className="text-foreground">applied: false</strong>, always.
-          </p>
-          <Button size="sm" variant="outline" onClick={downloadJson}>
-            Download JSON ({items.length})
-          </Button>
-          <ul className="space-y-2">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-faint">
+              These changes are safe to apply automatically (<strong className="text-foreground">applied: false</strong>).
+            </p>
+            <Button size="sm" variant="outline" onClick={downloadJson}>
+              Download JSON ({items.length})
+            </Button>
+          </div>
+          <div className="space-y-3">
             {items.map((it, i) => (
-              <li key={i} className="rounded-control border border-border bg-subtle p-3 text-xs">
-                <p className="font-medium text-foreground">{it.action}</p>
-                <p className="mt-1 text-secondary">{it.where}</p>
-                <p className="mt-1 text-faint">{Array.isArray(it.change) ? it.change.join(" · ") : it.change}</p>
-                {it.url && <p className="mt-1 truncate text-faint">{it.url}</p>}
-              </li>
+              <DeveloperFixCard key={i} item={it} />
             ))}
-          </ul>
+          </div>
         </div>
       )}
     </SlideOver>

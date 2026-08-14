@@ -26,6 +26,7 @@ export function ImagesClient({ rows, runId }: { rows: ImageRow[]; runId: string 
   const urlQ = searchParams.get("q") ?? "";
   const altState = ALT_STATES.includes(searchParams.get("alt") as AltState) ? (searchParams.get("alt") as AltState) : null;
   const noDims = searchParams.get("dims") === "missing";
+  const sizeFilter = searchParams.get("size"); // "oversized" | "large"
   const sortKey = (searchParams.get("sort") === "url" ? "url" : "usage") as SortKey;
   const sortDir = searchParams.get("dir") === "asc" ? "asc" : "desc";
 
@@ -64,17 +65,23 @@ export function ImagesClient({ rows, runId }: { rows: ImageRow[]; runId: string 
   const counts = useMemo(() => {
     const c: Record<AltState, number> = { missing: 0, empty: 0, described: 0 };
     let noDimsCount = 0;
+    let oversizedCount = 0;
+    let largeCount = 0;
     for (const r of rows) {
       c[r.altState]++;
       if (!r.hasDimensions) noDimsCount++;
+      if (r.sizeCategory === "oversized") oversizedCount++;
+      if (r.sizeCategory === "large") largeCount++;
     }
-    return { ...c, noDimsCount };
+    return { ...c, noDimsCount, oversizedCount, largeCount };
   }, [rows]);
 
   const filtered = useMemo(() => {
     let items = rows;
     if (altState) items = items.filter((r) => r.altState === altState);
     if (noDims) items = items.filter((r) => !r.hasDimensions);
+    if (sizeFilter === "oversized") items = items.filter((r) => r.sizeCategory === "oversized");
+    if (sizeFilter === "large") items = items.filter((r) => r.sizeCategory === "large" || r.sizeCategory === "oversized");
     if (qInput.trim()) {
       const needle = qInput.trim().toLowerCase();
       items = items.filter((r) => r.url.toLowerCase().includes(needle) || (r.alt ?? "").toLowerCase().includes(needle));
@@ -82,9 +89,15 @@ export function ImagesClient({ rows, runId }: { rows: ImageRow[]; runId: string 
     const dir = sortDir === "asc" ? 1 : -1;
     items = [...items].sort((a, b) => (sortKey === "url" ? a.url.localeCompare(b.url) * dir : (a.usageCount - b.usageCount) * dir));
     return items;
-  }, [rows, altState, noDims, qInput, sortKey, sortDir]);
+  }, [rows, altState, noDims, sizeFilter, qInput, sortKey, sortDir]);
 
   const visibleRows = filtered.slice(0, visible);
+
+  function formatBytes(bytes: number | null): string {
+    if (bytes === null) return "—";
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${Math.round(bytes / 1024)} KB`;
+  }
 
   return (
     <div className="space-y-4">
@@ -102,7 +115,7 @@ export function ImagesClient({ rows, runId }: { rows: ImageRow[]; runId: string 
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium uppercase tracking-wide text-faint">Alt text</span>
-        <Chip active={altState === null} onClick={() => updateParams({ alt: null })}>
+        <Chip active={altState === null && !sizeFilter && !noDims} onClick={() => updateParams({ alt: null, dims: null, size: null })}>
           All ({rows.length})
         </Chip>
         {ALT_STATES.map((s) => (
@@ -112,6 +125,13 @@ export function ImagesClient({ rows, runId }: { rows: ImageRow[]; runId: string 
         ))}
         <Chip active={noDims} onClick={() => updateParams({ dims: noDims ? null : "missing" })}>
           No dimensions ({counts.noDimsCount})
+        </Chip>
+        <span className="ml-2 text-xs font-medium uppercase tracking-wide text-faint">Size</span>
+        <Chip active={sizeFilter === "oversized"} onClick={() => updateParams({ size: sizeFilter === "oversized" ? null : "oversized" })}>
+          Oversized &gt; 500KB ({counts.oversizedCount})
+        </Chip>
+        <Chip active={sizeFilter === "large"} onClick={() => updateParams({ size: sizeFilter === "large" ? null : "large" })}>
+          Large &gt; 100KB ({counts.largeCount + counts.oversizedCount})
         </Chip>
       </div>
 
@@ -131,6 +151,7 @@ export function ImagesClient({ rows, runId }: { rows: ImageRow[]; runId: string 
               </Th>
               <Th>Alt state</Th>
               <Th>Dimensions</Th>
+              <Th>Size</Th>
               <Th>Format</Th>
               <Th sortDir={sortKey === "usage" ? sortDir : null} onSort={() => toggleSort("usage")}>
                 Used on
@@ -167,6 +188,15 @@ export function ImagesClient({ rows, runId }: { rows: ImageRow[]; runId: string 
                     <Badge tone={ALT_TONE[row.altState]}>{ALT_LABEL[row.altState]}</Badge>
                   </Td>
                   <Td>{row.hasDimensions ? `${row.width}×${row.height}` : <span className="text-faint">—</span>}</Td>
+                  <Td className="normal-case">
+                    {row.sizeBytes ? (
+                      <Badge tone={row.sizeCategory === "oversized" ? "danger" : row.sizeCategory === "large" ? "warn" : "neutral"}>
+                        {formatBytes(row.sizeBytes)}
+                      </Badge>
+                    ) : (
+                      <span className="text-faint">—</span>
+                    )}
+                  </Td>
                   <Td className="normal-case">{row.format ?? <span className="text-faint">—</span>}</Td>
                   <Td className="tabular-nums">{row.usageCount}</Td>
                   <Td className="max-w-xs truncate normal-case">
