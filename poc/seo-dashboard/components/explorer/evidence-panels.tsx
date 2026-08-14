@@ -35,9 +35,19 @@ function isSameUrl(a: string | null | undefined, b: string | null | undefined): 
 
 // ---- 1. Header band (identity strip — outside the section nav) ----------
 
-export function HeaderBand({ page, runId, pagerank }: { page: CrawledPageWithId; runId: string; pagerank?: number | null }) {
+export function HeaderBand({
+  page,
+  runId,
+  pagerank,
+  actions,
+}: {
+  page: CrawledPageWithId;
+  runId: string;
+  pagerank?: number | null;
+  actions?: React.ReactNode;
+}) {
   return (
-    <Card>
+    <Card className="space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -64,8 +74,10 @@ export function HeaderBand({ page, runId, pagerank }: { page: CrawledPageWithId;
         </div>
       </div>
 
+      {actions && <div className="border-t border-border pt-3">{actions}</div>}
+
       {page.renderSignals.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
           <span className="text-xs text-faint">Render signals:</span>
           {page.renderSignals.map((s) => (
             <Badge key={s} tone="warn">
@@ -143,29 +155,13 @@ export function MetadataPanel({ page }: { page: CrawledPageWithId }) {
 
   return (
     <Card id="metadata">
-      <SectionTitle>Metadata</SectionTitle>
+      <SectionTitle>Technical Directives & Canonical</SectionTitle>
       <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
         <div>
-          <dt className="text-xs text-faint">Title ({page.title === null ? 0 : page.title.length} chars)</dt>
-          <dd className="text-foreground">{page.title === null ? <span className="text-faint">null (missing)</span> : page.title === "" ? <span className="text-faint">(empty string)</span> : page.title}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-faint">Meta description ({page.metaDescription === null ? 0 : page.metaDescription.length} chars)</dt>
-          <dd className="text-foreground">
-            {page.metaDescription === null ? (
-              <span className="text-faint">null (missing)</span>
-            ) : page.metaDescription === "" ? (
-              <span className="text-faint">(empty string)</span>
-            ) : (
-              page.metaDescription
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs text-faint">Canonical</dt>
+          <dt className="text-xs text-faint">Canonical Tag</dt>
           <dd className="flex items-center gap-2 truncate text-foreground">
             {page.canonical === null ? (
-              <span className="text-faint">— (none)</span>
+              <span className="text-faint">— (none specified)</span>
             ) : (
               <div className="flex items-center gap-1.5 min-w-0">
                 <span className="truncate">{page.canonical}</span>
@@ -180,14 +176,25 @@ export function MetadataPanel({ page }: { page: CrawledPageWithId }) {
           </dd>
         </div>
         <div>
-          <dt className="text-xs text-faint">X-Robots-Tag header</dt>
-          <dd className="text-foreground">{xRobotsTag === null ? <span className="text-faint">— (not sent)</span> : xRobotsTag}</dd>
+          <dt className="text-xs text-faint">X-Robots-Tag (HTTP Header)</dt>
+          <dd className="text-foreground">{xRobotsTag ?? <span className="text-faint">— (none)</span>}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-faint">Robots Directives</dt>
+          <dd className="flex items-center gap-1.5 pt-0.5">
+            <Badge tone={page.robots?.noindex ? "danger" : "ok"}>
+              {page.robots?.noindex ? "noindex" : "indexable"}
+            </Badge>
+            <Badge tone={page.robots?.nofollow ? "danger" : "ok"}>
+              {page.robots?.nofollow ? "nofollow" : "followable"}
+            </Badge>
+          </dd>
         </div>
         <div className="sm:col-span-2">
-          <dt className="mb-1 text-xs text-faint">Robots meta (raw values)</dt>
+          <dt className="mb-1 text-xs text-faint">Robots Meta (Raw Tags)</dt>
           <dd className="flex flex-wrap items-center gap-1.5">
-            {page.robots.meta.length === 0 ? (
-              <span className="text-faint">— (no robots meta/header present)</span>
+            {!page.robots || page.robots.meta.length === 0 ? (
+              <span className="text-faint">— (no explicit robots meta tag found)</span>
             ) : (
               page.robots.meta.map((m, i) => (
                 <Badge key={`${m}-${i}`} tone="neutral">
@@ -195,8 +202,6 @@ export function MetadataPanel({ page }: { page: CrawledPageWithId }) {
                 </Badge>
               ))
             )}
-            <Badge tone={page.robots.noindex ? "danger" : "ok"}>{page.robots.noindex ? "noindex" : "indexable"}</Badge>
-            <Badge tone={page.robots.nofollow ? "danger" : "ok"}>{page.robots.nofollow ? "nofollow" : "followable"}</Badge>
           </dd>
         </div>
       </dl>

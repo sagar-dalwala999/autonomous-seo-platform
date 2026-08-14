@@ -31,6 +31,7 @@ import { HeadMetadataPanel } from "@/components/page-detail/head-metadata-panel"
 import { HeadIntegrityPanel } from "@/components/page-detail/head-integrity-panel";
 import { FaviconsPanel } from "@/components/page-detail/favicons-panel";
 import { FontsPanel } from "@/components/page-detail/fonts-panel";
+import { SerpPreviewPanel } from "@/components/page-detail/serp-preview-panel";
 import { DocumentStructurePanel } from "@/components/page-detail/document-structure-panel";
 import type { ExtendedCrawledPage } from "@/components/page-detail/types";
 
@@ -137,12 +138,12 @@ export default async function PageDetailPage({ params, searchParams }: Props) {
         nextHref={nextId ? `/pages/${nextId}` : null}
       />
 
-      <Card className="flex flex-wrap items-center justify-between gap-3 bg-subtle">
-        <p className="text-xs text-secondary">Full evidence record for this crawled page.</p>
-        <PageActions page={page} runId={runId} hasRawHtml={hasRawHtml} />
-      </Card>
-
-      <HeaderBand page={page} runId={runId} pagerank={pageGraph?.pagerank} />
+      <HeaderBand
+        page={page}
+        runId={runId}
+        pagerank={pageGraph?.pagerank}
+        actions={<PageActions page={page} runId={runId} hasRawHtml={hasRawHtml} />}
+      />
 
       {/* No items-start here: sticky's containing block is this grid item's own box, and
           items-start would shrink it to the nav's short content height instead of the row's
@@ -150,6 +151,7 @@ export default async function PageDetailPage({ params, searchParams }: Props) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_180px]">
         <div className="min-w-0 space-y-4">
           <PageIssuesPanel issues={pageIssues} analyzed={Boolean(analysisReport)} runId={runId} />
+          <SerpPreviewPanel title={page.title} metaDescription={page.metaDescription} url={page.url} />
           <MetadataPanel page={page} />
           <HeadMetadataPanel page={page as ExtendedCrawledPage} />
           <HeadIntegrityPanel page={page as ExtendedCrawledPage} />

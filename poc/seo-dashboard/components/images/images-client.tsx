@@ -3,13 +3,14 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Search, ImageOff } from "lucide-react";
+import { Search, ImageOff, Download } from "lucide-react";
 import { Chip } from "@/components/ui/chip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableContainer, TableHead, Th, Tr, Td } from "@/components/ui/table";
 import { ImageThumb } from "@/components/explorer/image-thumb";
+import { exportToCsv } from "@/lib/export-csv";
 import type { ImageRow, AltState } from "@/lib/data-images";
 
 const PAGE_SIZE = 100;
@@ -99,18 +100,47 @@ export function ImagesClient({ rows, runId }: { rows: ImageRow[]; runId: string 
     return `${Math.round(bytes / 1024)} KB`;
   }
 
+  function handleExportCsv() {
+    exportToCsv(
+      `images-${runId}`,
+      filtered as unknown as Record<string, unknown>[],
+      [
+        { key: "url", label: "Image URL" },
+        { key: "alt", label: "Alt Text" },
+        { key: "altState", label: "Alt State" },
+        { key: (r) => (r.hasDimensions ? `${r.width}x${r.height}` : "missing"), label: "Dimensions" },
+        { key: "sizeBytes", label: "File Size (bytes)" },
+        { key: "sizeCategory", label: "Size Category" },
+        { key: "format", label: "Format" },
+        { key: "usageCount", label: "Usage Count" },
+      ]
+    );
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex h-9 max-w-md items-center gap-2 rounded-control border border-border bg-subtle px-2.5 focus-within:ring-2 focus-within:ring-primary">
-        <Search size={14} strokeWidth={1.75} className="shrink-0 text-faint" aria-hidden="true" />
-        <input
-          type="search"
-          value={qInput}
-          onChange={(e) => handleQChange(e.target.value)}
-          placeholder="Search image URL or alt text..."
-          aria-label="Search images"
-          className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-faint outline-none"
-        />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex h-9 w-full max-w-md items-center gap-2 rounded-control border border-border bg-subtle px-2.5 focus-within:ring-2 focus-within:ring-primary">
+          <Search size={14} strokeWidth={1.75} className="shrink-0 text-faint" aria-hidden="true" />
+          <input
+            type="search"
+            value={qInput}
+            onChange={(e) => handleQChange(e.target.value)}
+            placeholder="Search image URL or alt text..."
+            aria-label="Search images"
+            className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-faint outline-none"
+          />
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExportCsv}
+          className="gap-1.5 h-9"
+          title="Export current filtered images to CSV"
+        >
+          <Download size={14} /> Export CSV ({filtered.length})
+        </Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
