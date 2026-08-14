@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 
 export function SearchInput() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState("");
+
+  const run = searchParams.get("run");
+  const withRun = (href: string) => (run ? `${href}${href.includes("?") ? "&" : "?"}run=${encodeURIComponent(run)}` : href);
 
   // Global "/" focuses search, like most dashboards — skipped when already typing somewhere.
   useEffect(() => {
@@ -25,7 +29,7 @@ export function SearchInput() {
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    router.push(value ? `/pages?q=${encodeURIComponent(value)}` : "/pages");
+    router.push(withRun(value ? `/pages?q=${encodeURIComponent(value)}` : "/pages"));
   }
 
   function onEscape(e: ReactKeyboardEvent<HTMLInputElement>) {
@@ -46,7 +50,7 @@ export function SearchInput() {
           aria-label="Search pages by URL"
           className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-faint outline-none"
         />
-        <kbd className="shrink-0 rounded-[4px] border border-border bg-elevated px-1 text-[10px] text-faint">/</kbd>
+        <kbd className="shrink-0 rounded-[4px] border border-border bg-elevated px-1 text-[10px] text-faint font-mono">/</kbd>
       </div>
     </form>
   );
