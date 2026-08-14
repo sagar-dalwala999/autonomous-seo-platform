@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableContainer, TableHead, Th, Tr, Td } from "@/components/ui/table";
+import { ImageThumb } from "@/components/explorer/image-thumb";
 import type { ImageRow, AltState } from "@/lib/data-images";
 
 const PAGE_SIZE = 100;
@@ -124,8 +125,9 @@ export function ImagesClient({ rows, runId }: { rows: ImageRow[]; runId: string 
         <>
           <TableContainer>
             <TableHead>
+              <Th className="w-16">Preview</Th>
               <Th sortDir={sortKey === "url" ? sortDir : null} onSort={() => toggleSort("url")}>
-                Image
+                Image URL & Alt
               </Th>
               <Th>Alt state</Th>
               <Th>Dimensions</Th>
@@ -138,10 +140,28 @@ export function ImagesClient({ rows, runId }: { rows: ImageRow[]; runId: string 
             <tbody>
               {visibleRows.map((row) => (
                 <Tr key={row.key}>
-                  <Td className="max-w-sm truncate normal-case">
-                    <a href={row.url} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
-                      {row.url}
-                    </a>
+                  <Td className="w-16 py-2 shrink-0">
+                    <ImageThumb src={row.url} alt={row.alt ?? ""} />
+                  </Td>
+                  <Td className="max-w-sm normal-case">
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <a
+                        href={row.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary underline underline-offset-2 truncate font-mono text-xs"
+                        title={row.url}
+                      >
+                        {row.url}
+                      </a>
+                      {row.alt ? (
+                        <span className="text-xs text-secondary truncate" title={row.alt}>
+                          alt: <span className="text-foreground">&quot;{row.alt}&quot;</span>
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-faint italic">no alt text</span>
+                      )}
+                    </div>
                   </Td>
                   <Td className="normal-case">
                     <Badge tone={ALT_TONE[row.altState]}>{ALT_LABEL[row.altState]}</Badge>

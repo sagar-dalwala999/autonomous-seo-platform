@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { findRunningCrawl, getCrawlStatus } from "@/lib/crawl-runner";
 import { requireApiSession } from "@/lib/auth-guard";
+import { listJobs } from "@/lib/data-queue";
 
 /** GET /queue — queue depth, oldest queued age, running jobs, worker count (spec §7). This POC
  *  enforces one crawl at a time (crawl-runner.ts's CrawlConflictError) with no queue table behind
@@ -14,6 +15,7 @@ export async function GET() {
 
   const runningId = await findRunningCrawl();
   const running = runningId ? await getCrawlStatus(runningId) : null;
+  const jobs = await listJobs();
   return NextResponse.json({
     queuedCount: 0,
     oldestQueuedAgeMs: null,
@@ -21,5 +23,6 @@ export async function GET() {
     runningRunId: running?.runId ?? null,
     workerCount: 1,
     note: "This POC runs one crawl at a time in-process (no separate worker tier / job table yet — PLAN-03 §1 target architecture).",
+    jobs,
   });
 }

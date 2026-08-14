@@ -40,7 +40,7 @@ export function EventRow({ event, pageId, runId, style }: Props) {
 
   if (meta.lifecycle) {
     return (
-      <div style={style} className="flex items-center gap-3 px-3 text-xs">
+      <div style={style} className="flex items-center gap-3 px-3 text-xs box-border border-b border-border/40 overflow-hidden">
         <div className="h-px flex-1 bg-border" aria-hidden="true" />
         <span className={cn("shrink-0 font-medium uppercase tracking-wide", TONE_TEXT[tone])}>{meta.label}</span>
         <span className="shrink-0 tabular-nums text-faint">{formatTime(event.ts)}</span>
@@ -50,7 +50,7 @@ export function EventRow({ event, pageId, runId, style }: Props) {
   }
 
   return (
-    <div style={style} className="flex items-center gap-3 px-3 font-mono text-xs">
+    <div style={style} className="flex items-center gap-3 px-3 font-mono text-xs box-border border-b border-border/40 overflow-hidden">
       <span className="w-[68px] shrink-0 tabular-nums text-faint">{formatTime(event.ts)}</span>
       <span className={cn("w-[168px] shrink-0 truncate font-sans font-medium", TONE_TEXT[tone])}>{meta.label}</span>
       <span className="w-[52px] shrink-0 tabular-nums">
