@@ -158,6 +158,7 @@ describe("fetchRobots — llms.txt", () => {
     stubSiteFetch({ robots: { status: 200, body: "User-agent: *\nDisallow:\n" }, llms: { status: 404, body: "not found" } });
     const robots = await fetchRobots("https://example.com", USER_AGENT);
     expect(robots.llmsTxt).toMatchObject({ present: false, url: "https://example.com/llms.txt", statusCode: 404 });
+    expect(robots.llmsTxt!.content).toBeNull();
     expect(robots.llmsTxt).not.toHaveProperty("score");
   });
 
@@ -168,13 +169,15 @@ describe("fetchRobots — llms.txt", () => {
     expect(robots.llmsTxt!.present).toBe(true);
     expect(robots.llmsTxt!.statusCode).toBe(200);
     expect(robots.llmsTxt!.bytes).toBe(Buffer.byteLength(body));
+    expect(robots.llmsTxt!.content).toBe(body);
   });
 
-  it("a 200 that is really an HTML error page does not count as present", async () => {
+  it("a 200 that is really an HTML error page does not count as present (and stores no content)", async () => {
     const html = "<!DOCTYPE html><html><body>404</body></html>";
     stubSiteFetch({ robots: { status: 200, body: "User-agent: *\nDisallow:\n" }, llms: { status: 200, body: html } });
     const robots = await fetchRobots("https://example.com", USER_AGENT);
     expect(robots.llmsTxt!.present).toBe(false);
+    expect(robots.llmsTxt!.content).toBeNull();
   });
 
   it("fetches llms.txt even when robots.txt itself 404s or errors", async () => {

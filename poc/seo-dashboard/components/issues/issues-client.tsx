@@ -2,45 +2,51 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Search, Download, LayoutGrid, ArrowUpDown, FileWarning, History as HistoryIcon, ChevronRight } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { StatValue } from "@/components/ui/stat-value";
+import { ChevronRight, FileWarning, ShieldCheck } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableContainer, TableHead, Th, Tr, Td } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { cn } from "@/lib/cn";
 import { toCsv } from "@/lib/csv";
-import { RuleGroupCard } from "./rule-group-card";
-import { IssuesFilterChips } from "./issues-filter-chips";
+import { KpiTiles, type KpiTileSpec } from "./kpi-tiles";
+import { IssuesToolbar, type IssueGroup } from "./issues-toolbar";
+import { FindingRow, humanizeRuleId } from "./finding-row";
+import { GroupSection } from "./group-section";
+import { GroupNav } from "./group-nav";
+import { FullFixPlan } from "./full-fix-plan";
 import { FixPlanPanel } from "./fix-plan-panel";
-import { HealthTrend } from "./health-trend";
-import { PriorityFactors } from "./finding-badges";
 import { useMutes } from "./use-mutes";
 import {
   groupIssuesByRule,
   groupByArea,
   diffSinceLastCrawl,
   filterIssues,
-  type IssueFilterState,
+  type RuleGroupLite,
 } from "@/lib/issues-view-helpers";
-import type { AutomationReport, AutomationLevel, FixPlan, FixPlanItem, HealthHistoryPoint } from "@/lib/data-issue-extras";
+import type { AutomationReport, AutomationLevel, FixPlan, FixPlanItem } from "@/lib/data-issue-extras";
 import type { Issue, IssueSeverity, FindingReport, WorstPageEntry } from "@/lib/types";
-
-type ViewMode = "area" | "priority" | "worst" | "since";
-const VIEW_MODES: { key: ViewMode; label: string; icon: typeof LayoutGrid }[] = [
-  { key: "area", label: "By area", icon: LayoutGrid },
-  { key: "priority", label: "By priority", icon: ArrowUpDown },
-  { key: "worst", label: "Worst pages", icon: FileWarning },
-  { key: "since", label: "Since last crawl", icon: HistoryIcon },
-];
 
 const SEVERITIES: IssueSeverity[] = ["error", "warning", "notice"];
 const AUTOMATION_KEYS: (AutomationLevel | "not-classified")[] = ["auto-safe", "auto-with-review", "human-only", "not-classified"];
+const AUTOMATION_LABEL: Record<AutomationLevel | "not-classified", string> = {
+  "auto-safe": "⚡ Auto-safe",
+  "auto-with-review": "◐ Needs review",
+  "human-only": "✋ Human only",
+  "not-classified": "Not classified",
+};
+
+/** Unifies the four view headings — plain title with a muted sub-note, matching the app's cards. */
+function SectionHeading({ title, sub }: { title: string; sub?: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+      <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+      {sub && <span className="text-xs text-faint">{sub}</span>}
+    </div>
+  );
+}
 
 export interface IssuesClientProps {
   runId: string;
-  healthScore: number;
   pagesAnalyzed: number;
   issues: Issue[];
   counts: Record<IssueSeverity, number>;
@@ -48,7 +54,6 @@ export interface IssuesClientProps {
   pageIdToUrlEntries: [string, string][];
   automation: AutomationReport | null;
   fixPlan: FixPlan | null;
-  healthHistory: HealthHistoryPoint[];
   previousRuleCounts: Record<string, number> | null;
   /** Real composite priority per rule (src/analysis/priority/priority.ts). [] on runs that predate it. */
   findings: FindingReport[];
@@ -60,7 +65,6 @@ export interface IssuesClientProps {
 
 export function IssuesClient({
   runId,
-  healthScore,
   pagesAnalyzed,
   issues,
   counts,
@@ -68,7 +72,6 @@ export function IssuesClient({
   pageIdToUrlEntries,
   automation,
   fixPlan,
-  healthHistory,
   previousRuleCounts,
   findings,
   worstPages,
@@ -96,7 +99,8 @@ export function IssuesClient({
   }, [fixPlan]);
   const findingsByRule = useMemo(() => new Map(findings.map((f) => [f.ruleId, f])), [findings]);
 
-  const view = (VIEW_MODES.find((v) => v.key === searchParams.get("view"))?.key ?? "area") as ViewMode;
+  const group = (["area", "priority", "worst", "since"].find((v) => v === searchParams.get("view")) ?? "area") as IssueGroup;
+  const show = ["failing", "all", "passed"].includes(searchParams.get("show") ?? "") ? (searchParams.get("show") as string) : "failing";
   const activeSeverity = SEVERITIES.includes(searchParams.get("severity") as IssueSeverity) ? (searchParams.get("severity") as IssueSeverity) : null;
   const activeCategory = searchParams.get("category");
   const activeAutomationRaw = searchParams.get("fixType");
@@ -115,6 +119,7 @@ export function IssuesClient({
 
   const [fixPlanRuleId, setFixPlanRuleId] = useState<string | null>(null);
   const [showAccepted, setShowAccepted] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
 
   const { isMuted, isPending, mute, unmute } = useMutes(runId, serverMutedRuleIds);
 
@@ -133,35 +138,152 @@ export function IssuesClient({
     debounceRef.current = setTimeout(() => updateParams({ q: value || null }), 250);
   }
 
-  const categories = useMemo(() => [...new Set(issues.map((i) => i.category))].sort(), [issues]);
+  const mutedRuleIdSet = useMemo(() => new Set(serverMutedRuleIds), [serverMutedRuleIds]);
 
-  const filterState: IssueFilterState = { q: qInput, severity: activeSeverity, category: activeCategory, automation: activeAutomation };
+  /* ── filtering ──────────────────────────────────────────────────────────────────────── */
   const filtered = useMemo(
-    () => filterIssues(issues, filterState, automationLevelByRule, pageIdToUrl),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () =>
+      filterIssues(
+        issues,
+        { q: qInput, severity: activeSeverity, category: activeCategory, automation: activeAutomation },
+        automationLevelByRule,
+        pageIdToUrl,
+      ),
     [issues, qInput, activeSeverity, activeCategory, activeAutomation, automationLevelByRule, pageIdToUrl],
   );
-
-  const mutedRuleIdSet = useMemo(() => new Set(serverMutedRuleIds), [serverMutedRuleIds]);
   const activeIssues = useMemo(() => filtered.filter((i) => !mutedRuleIdSet.has(i.ruleId)), [filtered, mutedRuleIdSet]);
   const acceptedIssues = useMemo(() => filtered.filter((i) => mutedRuleIdSet.has(i.ruleId)), [filtered, mutedRuleIdSet]);
 
-  const severityCounts = SEVERITIES.map((key) => ({ key, count: issues.filter((i) => i.severity === key && !mutedRuleIdSet.has(i.ruleId)).length }));
-  const automationCounts = AUTOMATION_KEYS.map((key) => ({
-    key,
-    count: issues.filter((i) => !mutedRuleIdSet.has(i.ruleId) && (automationLevelByRule.get(i.ruleId) ?? "not-classified") === key).length,
-  }));
+  // distinct pages touched by ALL unmuted findings (filter-independent, like the reference's
+  // totals.uniquePagesAffected) — pageId/url plus any secondary pageIds in evidence
+  const allIssuesUnmuted = useMemo(() => issues.filter((i) => !mutedRuleIdSet.has(i.ruleId)), [issues, mutedRuleIdSet]);
+  const uniquePagesAffected = useMemo(() => {
+    const seen = new Set<string>();
+    for (const i of allIssuesUnmuted) {
+      seen.add(i.pageId ?? i.url ?? `${i.ruleId}-site`);
+      for (const e of i.evidence) if (e.pageId) seen.add(e.pageId);
+    }
+    return seen.size;
+  }, [allIssuesUnmuted]);
 
-  const activeGroups = useMemo(() => groupIssuesByRule(activeIssues, pagesAnalyzed), [activeIssues, pagesAnalyzed]);
-  const acceptedGroups = useMemo(() => groupIssuesByRule(acceptedIssues, pagesAnalyzed), [acceptedIssues, pagesAnalyzed]);
-  const areaGroups = useMemo(() => groupByArea(activeGroups), [activeGroups]);
-  // Real composite priority (severity x reach x importance x confidence), not the area/severity
-  // ordering groupIssuesByRule uses by default — see finding-badges.tsx's PriorityFactors.
-  const priorityRankedGroups = useMemo(
-    () => [...activeGroups].sort((a, b) => (findingsByRule.get(b.ruleId)?.priority ?? -1) - (findingsByRule.get(a.ruleId)?.priority ?? -1)),
-    [activeGroups, findingsByRule],
+  /* ── groups ─────────────────────────────────────────────────────────────────────────── */
+  const failingGroups = useMemo(() => groupIssuesByRule(activeIssues, pagesAnalyzed), [activeIssues, pagesAnalyzed]);
+  const passingGroups = useMemo(() => {
+    // "All rules" / "Passing" views need the rules that fired zero times — only available from
+    // the priority slice (report.findings). [] on runs that predate it → views degrade to the
+    // failing list rather than fabricate a rulebook.
+    const passing = findings.filter((f) => f.status === "passed" && !mutedRuleIdSet.has(f.ruleId));
+    return passing.map<RuleGroupLite>((f) => ({
+      ruleId: f.ruleId,
+      category: f.category,
+      severity: f.severity,
+      howToFix: f.howToFix,
+      affectedPageCount: 0,
+      affectedPercent: 0,
+      items: [],
+    }));
+  }, [findings, mutedRuleIdSet]);
+
+  // group-level filters, mirroring the reference module: severity, fix type, then search over
+  // the finding AND the URLs it names ("what is wrong with /pricing" is the question people
+  // arrive with, and a rule title never contains a path).
+  const groups = useMemo(() => {
+    let list: RuleGroupLite[];
+    if (show === "passed") list = passingGroups;
+    else if (show === "all") list = [...failingGroups, ...passingGroups];
+    else list = failingGroups;
+
+    if (activeSeverity) list = list.filter((g) => g.severity === activeSeverity);
+    if (activeAutomation) {
+      list = list.filter((g) => {
+        const level = automationLevelByRule.get(g.ruleId) ?? null;
+        return activeAutomation === "not-classified" ? level === null : level === activeAutomation;
+      });
+    }
+    const needle = qInput.trim().toLowerCase();
+    if (needle) {
+      list = list.filter((g) => {
+        const finding = findingsByRule.get(g.ruleId);
+        const hay = `${humanizeRuleId(g.ruleId)} ${g.category} ${finding?.why ?? g.items[0]?.message ?? ""} ${g.howToFix}`.toLowerCase();
+        if (hay.includes(needle)) return true;
+        return g.items.some((i) => {
+          const url = i.url ?? (i.pageId ? pageIdToUrl.get(i.pageId) : undefined) ?? "";
+          return url.toLowerCase().includes(needle) || i.message.toLowerCase().includes(needle);
+        });
+      });
+    }
+    return list;
+  }, [show, failingGroups, passingGroups, activeSeverity, activeAutomation, automationLevelByRule, qInput, findingsByRule, pageIdToUrl]);
+
+  const areaGroups = useMemo(() => groupByArea(groups), [groups]);
+  const priorityRanked = useMemo(
+    () => [...groups].sort((a, b) => (findingsByRule.get(b.ruleId)?.priority ?? -1) - (findingsByRule.get(a.ruleId)?.priority ?? -1)),
+    [groups, findingsByRule],
   );
+  const acceptedGroups = useMemo(() => groupIssuesByRule(acceptedIssues, pagesAnalyzed), [acceptedIssues, pagesAnalyzed]);
   const sinceRows = useMemo(() => diffSinceLastCrawl(activeIssues, previousRuleCounts), [activeIssues, previousRuleCounts]);
+
+  /* ── headline numbers ───────────────────────────────────────────────────────────────── */
+  const automationRuleCounts = useMemo(() => {
+    const m = new Map<(typeof AUTOMATION_KEYS)[number], number>();
+    for (const key of AUTOMATION_KEYS) m.set(key, 0);
+    const seen = new Set<string>();
+    for (const i of activeIssues) {
+      const ruleId = i.ruleId;
+      if (seen.has(ruleId)) continue;
+      seen.add(ruleId);
+      const level = automationLevelByRule.get(ruleId) ?? "not-classified";
+      m.set(level, (m.get(level) ?? 0) + 1);
+    }
+    return m;
+  }, [activeIssues, automationLevelByRule]);
+  const automationOptions = [
+    { value: "any", label: "All" },
+    ...AUTOMATION_KEYS.map((key) => ({ value: key, label: AUTOMATION_LABEL[key], count: automationRuleCounts.get(key) ?? 0 })),
+  ];
+
+  const autoFixable = fixPlan?.totalChanges ?? automation?.counts["auto-safe"] ?? 0;
+  const cleanPages = Math.max(0, pagesAnalyzed - uniquePagesAffected);
+  const filtersActive = show !== "failing" || activeSeverity !== null || activeAutomation !== null;
+
+  const clearAll = () => updateParams({ show: null, severity: null, fixType: null, q: null });
+
+  // clicking a severity tile forces the list back to "needs fixing" — clicking "3 critical"
+  // and being shown passing rules would be absurd
+  const sevTile = (sev: IssueSeverity): Omit<KpiTileSpec, "value" | "label"> => ({
+    onClick: () => updateParams({ show: "failing", severity: activeSeverity === sev ? null : sev }),
+    active: activeSeverity === sev,
+    dot: sev === "error" ? "bad" : sev === "warning" ? "warn" : "neutral",
+  });
+
+  const kpiTiles: KpiTileSpec[] = [
+    { ...sevTile("error"), value: counts.error, label: "critical" },
+    { ...sevTile("warning"), value: counts.warning, label: "warnings" },
+    { ...sevTile("notice"), value: counts.notice, label: "notices" },
+    { value: uniquePagesAffected.toLocaleString(), label: "pages with issues" },
+    { value: cleanPages.toLocaleString(), label: "clean pages", dot: "ok" },
+    {
+      value: autoFixable,
+      label: "auto-fixable changes",
+      dot: "ok",
+      onClick: () => updateParams({ view: "priority", fixType: activeAutomation === "auto-safe" ? null : "auto-safe" }),
+      active: activeAutomation === "auto-safe",
+    },
+    // shown only once something has been accepted, so a clean site is not asked to explain a
+    // zero it has no context for
+    ...(serverMutedRuleIds.length > 0 ? [{ value: serverMutedRuleIds.length, label: "accepted risks" } satisfies KpiTileSpec] : []),
+  ];
+
+  // counts per area for the rail: what is still firing, and whether any of it is critical
+  const navCounts = Object.fromEntries(
+    areaGroups.map((a) => [
+      a.category,
+      {
+        firing: a.groups.filter((g) => g.items.length > 0).length,
+        critical: a.groups.filter((g) => g.items.length > 0 && g.severity === "error").length,
+      },
+    ]),
+  );
 
   function exportCsv() {
     const columns = ["ruleId", "category", "severity", "url", "message", "howToFix", "automation", "effort", "confidence", "accepted"];
@@ -192,44 +314,38 @@ export function IssuesClient({
     URL.revokeObjectURL(url);
   }
 
-  function renderGroup(group: (typeof activeGroups)[number], muted: boolean) {
-    return (
-      <RuleGroupCard
-        key={group.ruleId}
-        group={group}
-        runId={runId}
-        pageIdToUrl={pageIdToUrl}
-        automation={automationByRule.get(group.ruleId) ?? null}
-        fixPlanItems={fixPlanByRule.get(group.ruleId) ?? []}
-        fixPlanAvailable={fixPlan !== null}
-        muted={muted}
-        mutePending={isPending(group.ruleId)}
-        onMuteToggle={(ruleId) => (isMuted(ruleId) ? unmute(ruleId) : mute(ruleId, "accepted from /issues"))}
-        onOpenFixPlan={setFixPlanRuleId}
-      />
-    );
-  }
+  const renderFinding = (g: RuleGroupLite, muted: boolean) => (
+    <FindingRow
+      key={g.ruleId}
+      group={g}
+      runId={runId}
+      pageIdToUrl={pageIdToUrl}
+      automation={automationByRule.get(g.ruleId) ?? null}
+      finding={findingsByRule.get(g.ruleId) ?? null}
+      fixPlanItems={fixPlanByRule.get(g.ruleId) ?? []}
+      fixPlanAvailable={fixPlan !== null}
+      muted={muted}
+      mutePending={isPending(g.ruleId)}
+      onMuteToggle={(ruleId) => (isMuted(ruleId) ? unmute(ruleId) : mute(ruleId, "accepted from /issues"))}
+      onOpenFixPlan={setFixPlanRuleId}
+    />
+  );
+
+  const sinceSummary = useMemo(() => {
+    const summary = { new: 0, worsened: 0, improved: 0, resolved: 0, unchanged: 0 };
+    for (const row of sinceRows) {
+      if (row.status === "new") summary.new++;
+      else if (row.status === "worsened") summary.worsened++;
+      else if (row.status === "improved") summary.improved++;
+      else if (row.status === "resolved") summary.resolved++;
+      else summary.unchanged++;
+    }
+    return summary;
+  }, [sinceRows]);
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <Card className="flex items-center gap-3 lg:col-span-1">
-          <StatValue value={healthScore} caption={`Health score · ${pagesAnalyzed} pages`} />
-        </Card>
-        <Card className="flex items-center gap-3">
-          <StatValue value={counts.error} caption="Errors" />
-        </Card>
-        <Card className="flex items-center gap-3">
-          <StatValue value={counts.warning} caption="Warnings" />
-        </Card>
-        <Card className="flex items-center gap-3">
-          <StatValue value={counts.notice} caption="Notices" />
-        </Card>
-        <Card className="lg:col-span-1">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-faint">Health trend</p>
-          <HealthTrend history={healthHistory} />
-        </Card>
-      </div>
+      <KpiTiles items={kpiTiles} />
 
       {rulesSkippedDataUnavailable.length > 0 && (
         <p className="text-xs text-faint">
@@ -238,156 +354,189 @@ export function IssuesClient({
         </p>
       )}
 
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {VIEW_MODES.map((v) => {
-            const Icon = v.icon;
-            return (
-              <button
-                key={v.key}
-                type="button"
-                onClick={() => updateParams({ view: v.key === "area" ? null : v.key })}
-                aria-pressed={view === v.key}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-control border px-3 py-1.5 text-xs font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary",
-                  view === v.key ? "border-primary bg-primary text-primary-contrast" : "border-border bg-subtle text-secondary hover:bg-elevated hover:text-foreground",
-                )}
-              >
-                <Icon size={13} strokeWidth={1.75} aria-hidden="true" />
-                {v.label}
-              </button>
-            );
-          })}
-          <Button size="sm" variant="outline" className="ml-auto" onClick={exportCsv}>
-            <Download size={13} strokeWidth={1.75} aria-hidden="true" />
-            Export CSV
-          </Button>
-        </div>
+      <IssuesToolbar
+        group={group}
+        onGroup={(g) => updateParams({ view: g === "area" ? null : g })}
+        show={show}
+        onShow={(v) => updateParams({ show: v === "failing" ? null : v })}
+        severity={activeSeverity}
+        onSeverity={(v) => updateParams({ severity: v })}
+        automation={activeAutomation}
+        onAutomation={(v) => updateParams({ fixType: v })}
+        automationOptions={automationOptions}
+        filtersActive={filtersActive}
+        onClear={clearAll}
+        q={qInput}
+        onQChange={handleQChange}
+        autoFixablePages={autoFixable}
+        planOpen={planOpen}
+        onTogglePlan={() => setPlanOpen((v) => !v)}
+        onExportCsv={exportCsv}
+      />
 
-        <div className="flex h-9 max-w-md items-center gap-2 rounded-control border border-border bg-subtle px-2.5 focus-within:ring-2 focus-within:ring-primary">
-          <Search size={14} strokeWidth={1.75} className="shrink-0 text-faint" aria-hidden="true" />
-          <input
-            type="search"
-            value={qInput}
-            onChange={(e) => handleQChange(e.target.value)}
-            placeholder="Search findings and URLs..."
-            aria-label="Search findings and URLs"
-            className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-faint outline-none"
-          />
-        </div>
-
-        <IssuesFilterChips
-          severities={severityCounts}
-          categories={categories}
-          automationLevels={automationCounts}
-          activeSeverity={activeSeverity}
-          activeCategory={activeCategory}
-          activeAutomation={activeAutomation}
-          automationDataAvailable={automation !== null}
-          onSeverity={(v) => updateParams({ severity: v })}
-          onCategory={(v) => updateParams({ category: v })}
-          onAutomation={(v) => updateParams({ fixType: v })}
-        />
-      </div>
-
-      {activeIssues.length === 0 ? (
-        <EmptyState icon={FileWarning} title="Nothing matches these filters" description="Try clearing search, severity, fix type, or area." />
-      ) : view === "area" ? (
-        <div className="space-y-4">
-          {areaGroups.map((area) => (
-            <div key={area.category} className="space-y-2">
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                {area.category}
-                <Badge tone="neutral">{area.groups.reduce((n, g) => n + g.items.length, 0)}</Badge>
-              </h3>
-              <div className="space-y-2">{area.groups.map((g) => renderGroup(g, false))}</div>
+      {planOpen && group !== "since" &&
+        (fixPlan ? (
+          <FullFixPlan plan={fixPlan} runId={runId} onClose={() => setPlanOpen(false)} />
+        ) : (
+          <div className="rounded-card border border-dashed border-border-strong bg-card px-5 py-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-foreground">Fix plan</h3>
+              <Button size="sm" variant="outline" onClick={() => setPlanOpen(false)}>
+                Close
+              </Button>
             </div>
-          ))}
-        </div>
-      ) : view === "priority" ? (
-        <div className="space-y-3">
-          {priorityRankedGroups.map((g) => (
-            <div key={g.ruleId} className="space-y-1.5">
-              <PriorityFactors finding={findingsByRule.get(g.ruleId) ?? null} />
-              {renderGroup(g, false)}
-            </div>
-          ))}
-        </div>
-      ) : view === "worst" ? worstPages.length === 0 ? (
-        <EmptyState icon={FileWarning} title="Worst-page ranking not available" description="This run predates the priority engine — reanalyze it to get a real per-page harm ranking." />
-      ) : (
-        <TableContainer>
-          <TableHead>
-            <Th>Page</Th>
-            <Th>Issues</Th>
-            <Th>Top rules</Th>
-            <Th>Harm</Th>
-          </TableHead>
-          <tbody>
-            {worstPages.map((row) => (
-              <Tr key={row.pageId}>
-                <Td className="max-w-md truncate normal-case">
-                  <a href={`/pages/${row.pageId}?run=${encodeURIComponent(runId)}`} className="text-primary underline underline-offset-2">
-                    {row.url}
-                  </a>
-                </Td>
-                <Td>{row.issueCount}</Td>
-                <Td className="max-w-xs truncate font-mono text-[11px] normal-case">{row.topRuleIds.join(", ")}</Td>
-                <Td className="font-semibold">{row.harm.toFixed(1)}</Td>
-              </Tr>
-            ))}
-          </tbody>
-        </TableContainer>
-      ) : (
-        <TableContainer>
-          <TableHead>
-            <Th>Rule</Th>
-            <Th>Area</Th>
-            <Th>Severity</Th>
-            <Th>This run</Th>
-            <Th>Previous run</Th>
-            <Th>Change</Th>
-            <Th>Status</Th>
-          </TableHead>
-          <tbody>
-            {previousRuleCounts === null ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-sm text-faint">
-                  No earlier judged crawl of this site to compare against yet.
-                </td>
-              </tr>
-            ) : (
-              sinceRows.map((row) => (
-                <Tr key={row.ruleId}>
-                  <Td className="font-mono text-xs normal-case">{row.ruleId}</Td>
-                  <Td className="normal-case">{row.category}</Td>
-                  <Td className="capitalize normal-case">{row.severity}</Td>
-                  <Td>{row.current}</Td>
-                  <Td>{row.previous}</Td>
-                  <Td className={row.delta > 0 ? "text-danger" : row.delta < 0 ? "text-ok" : "text-faint"}>
-                    {row.delta > 0 ? "+" : ""}
-                    {row.delta}
-                  </Td>
-                  <Td className="normal-case">
-                    <Badge tone={row.status === "resolved" || row.status === "improved" ? "ok" : row.status === "new" || row.status === "worsened" ? "danger" : "neutral"}>
-                      {row.status}
-                    </Badge>
-                  </Td>
-                </Tr>
-              ))
+            <p className="mt-2 text-xs text-secondary">
+              Fix plan not generated for this run yet — run{" "}
+              <code className="rounded border border-border bg-elevated px-1 py-0.5 text-[11px]">npm run fixplan -- --run {runId}</code>{" "}
+              from <code className="rounded border border-border bg-elevated px-1 py-0.5 text-[11px]">seo-crawler-poc</code>.
+            </p>
+          </div>
+        ))}
+
+      {group === "since" && (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <SectionHeading
+              title="Since the last crawl"
+              sub="comparing this run with the previous judged crawl of the site"
+            />
+            {previousRuleCounts !== null && (
+              <span className="ml-auto flex flex-wrap items-center gap-1.5">
+                <span className="rounded-pill bg-subtle px-2 py-0.5 text-[11px] font-medium tabular-nums text-secondary">
+                  net {sinceRows.reduce((s, r) => s + r.delta, 0) > 0 ? "+" : ""}
+                  {sinceRows.reduce((s, r) => s + r.delta, 0)} findings
+                </span>
+                <span className="rounded-pill bg-danger-bg px-2 py-0.5 text-[11px] font-medium tabular-nums text-danger">{sinceSummary.new} new</span>
+                <span className="rounded-pill bg-danger-bg px-2 py-0.5 text-[11px] font-medium tabular-nums text-danger">{sinceSummary.worsened} worse</span>
+                <span className="rounded-pill bg-ok-bg px-2 py-0.5 text-[11px] font-medium tabular-nums text-ok">{sinceSummary.improved} improved</span>
+                <span className="rounded-pill bg-ok-bg px-2 py-0.5 text-[11px] font-medium tabular-nums text-ok">{sinceSummary.resolved} resolved</span>
+                <span className="rounded-pill bg-subtle px-2 py-0.5 text-[11px] font-medium tabular-nums text-secondary">{sinceSummary.unchanged} unchanged</span>
+              </span>
             )}
-          </tbody>
-        </TableContainer>
+          </div>
+          <TableContainer>
+            <TableHead>
+              <Th>Rule</Th>
+              <Th>Area</Th>
+              <Th>Severity</Th>
+              <Th>This run</Th>
+              <Th>Previous run</Th>
+              <Th>Change</Th>
+              <Th>Status</Th>
+            </TableHead>
+            <tbody>
+              {previousRuleCounts === null ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-6 text-center text-sm text-faint">
+                    No earlier judged crawl of this site to compare against yet.
+                  </td>
+                </tr>
+              ) : (
+                sinceRows.map((row) => (
+                  <Tr key={row.ruleId}>
+                    <Td className="font-mono text-xs normal-case">{row.ruleId}</Td>
+                    <Td className="normal-case">{row.category}</Td>
+                    <Td className="capitalize normal-case">{row.severity === "error" ? "critical" : row.severity}</Td>
+                    <Td>{row.current}</Td>
+                    <Td>{row.previous}</Td>
+                    <Td className={row.delta > 0 ? "text-danger" : row.delta < 0 ? "text-ok" : "text-faint"}>
+                      {row.delta > 0 ? "+" : ""}
+                      {row.delta}
+                    </Td>
+                    <Td className="normal-case">
+                      <Badge tone={row.status === "resolved" || row.status === "improved" ? "ok" : row.status === "new" || row.status === "worsened" ? "danger" : "neutral"}>
+                        {row.status}
+                      </Badge>
+                    </Td>
+                  </Tr>
+                ))
+              )}
+            </tbody>
+          </TableContainer>
+        </>
       )}
 
-      <section className="rounded-card border border-dashed border-border-strong">
+      {group === "worst" &&
+        (worstPages.length === 0 ? (
+          <EmptyState icon={FileWarning} title="Worst-page ranking not available" description="This run predates the priority engine — reanalyze it to get a real per-page harm ranking." />
+        ) : (
+          <>
+            <SectionHeading title="Worst pages" sub="the same findings, asked page-first" />
+            <TableContainer>
+              <TableHead>
+                <Th>Page</Th>
+                <Th>Issues</Th>
+                <Th>Top rules</Th>
+                <Th>Harm</Th>
+              </TableHead>
+              <tbody>
+                {worstPages.map((row) => (
+                  <Tr key={row.pageId}>
+                    <Td className="max-w-md truncate normal-case">
+                      <a href={`/pages/${row.pageId}?run=${encodeURIComponent(runId)}`} className="text-primary underline underline-offset-2">
+                        {row.url}
+                      </a>
+                    </Td>
+                    <Td>{row.issueCount}</Td>
+                    <Td className="max-w-xs truncate font-mono text-[11px] normal-case">{row.topRuleIds.join(", ")}</Td>
+                    <Td className="font-semibold">{row.harm.toFixed(1)}</Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </TableContainer>
+          </>
+        ))}
+
+      {group === "priority" &&
+        (priorityRanked.length === 0 ? (
+          <EmptyState icon={FileWarning} title="Nothing matches these filters" description="Try clearing search, severity, or fix type." />
+        ) : (
+          <>
+            <SectionHeading title="Ranked by priority" sub="what to fix first on this site" />
+            <div className="space-y-2">{priorityRanked.map((g) => renderFinding(g, false))}</div>
+          </>
+        ))}
+
+      {group === "area" &&
+        (areaGroups.length === 0 ? (
+          <EmptyState icon={FileWarning} title="Nothing matches these filters" description="Try widening the severity or fix-type filter." />
+        ) : (
+          <>
+            <SectionHeading title="By area" sub="grouped by the rulebook&apos;s areas, worst first inside each" />
+            <div className="flex flex-col gap-4 md:flex-row">
+              <GroupNav names={areaGroups.map((a) => a.category)} counts={navCounts} />
+              <div className="min-w-0 flex-1 space-y-3">
+                {areaGroups.map((a) => (
+                  <GroupSection
+                    key={a.category}
+                    name={a.category}
+                    list={a.groups}
+                    runId={runId}
+                    pageIdToUrl={pageIdToUrl}
+                    automationByRule={automationByRule}
+                    findingsByRule={findingsByRule}
+                    fixPlanByRule={fixPlanByRule}
+                    fixPlanAvailable={fixPlan !== null}
+                    mutePending={isPending}
+                    onMuteToggle={(ruleId) => (isMuted(ruleId) ? unmute(ruleId) : mute(ruleId, "accepted from /issues"))}
+                    onOpenFixPlan={setFixPlanRuleId}
+                    defaultOpen={a.groups.some((g) => g.items.length > 0)}
+                  />
+                ))}
+              </div>
+            </div>
+          </>
+        ))}
+
+      <section className="overflow-hidden rounded-card border border-dashed border-border-strong bg-card">
         <button
           type="button"
           onClick={() => setShowAccepted((v) => !v)}
           aria-expanded={showAccepted}
-          className="flex w-full items-center gap-2 px-5 py-3 text-left text-sm font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="flex w-full cursor-pointer items-center gap-2.5 px-5 py-3 text-left text-sm font-medium text-foreground outline-none transition-colors duration-100 hover:bg-subtle focus-visible:ring-2 focus-visible:ring-primary"
         >
-          <ChevronRight size={14} strokeWidth={2} className={cn("text-faint transition-transform duration-150", showAccepted && "rotate-90")} aria-hidden="true" />
+          <ChevronRight size={14} strokeWidth={2} className={`text-faint transition-transform duration-150 ${showAccepted ? "rotate-90" : ""}`} aria-hidden="true" />
+          <ShieldCheck size={15} strokeWidth={1.75} className="text-faint" aria-hidden="true" />
           Accepted risk
           <Badge tone="neutral">{acceptedGroups.reduce((n, g) => n + g.items.length, 0)}</Badge>
         </button>
@@ -396,7 +545,7 @@ export function IssuesClient({
             {acceptedGroups.length === 0 ? (
               <p className="text-sm text-faint">Nothing accepted yet — findings never disappear, they move here when muted.</p>
             ) : (
-              acceptedGroups.map((g) => renderGroup(g, true))
+              acceptedGroups.map((g) => renderFinding(g, true))
             )}
           </div>
         )}

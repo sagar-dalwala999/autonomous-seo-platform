@@ -60,10 +60,10 @@ export default async function IssuesPage({ searchParams }: Props) {
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-secondary">
-        Run <span className="font-medium text-foreground">{runId}</span> · rulebook v{report.rulebookVersion} · generated{" "}
-        {new Date(report.generatedAt).toLocaleString()}
-      </p>
+      <header className="space-y-1">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-faint">SEO rules</p>
+        <h2 className="text-2xl font-semibold leading-tight tracking-tight text-foreground">What needs fixing.</h2>
+      </header>
 
       {report.issues.length === 0 ? (
         <EmptyState
@@ -74,7 +74,6 @@ export default async function IssuesPage({ searchParams }: Props) {
       ) : (
         <IssuesClient
           runId={runId}
-          healthScore={report.healthScore}
           pagesAnalyzed={report.pagesAnalyzed}
           issues={report.issues}
           counts={report.counts}
@@ -82,7 +81,6 @@ export default async function IssuesPage({ searchParams }: Props) {
           pageIdToUrlEntries={pageIdToUrlEntries}
           automation={automation}
           fixPlan={fixPlan}
-          healthHistory={healthHistory}
           previousRuleCounts={previousRuleCounts}
           findings={report.findings ?? []}
           worstPages={report.worstPages ?? []}

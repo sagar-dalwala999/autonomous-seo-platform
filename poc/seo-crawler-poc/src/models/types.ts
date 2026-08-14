@@ -851,6 +851,10 @@ export interface LlmsTxtInfo {
   statusCode: number | null;
   bytes: number;
   fetchedAt: string;
+  /** The file body when `present`. Optional so robots.json written before this field parsed
+   * unchanged — older runs carry metadata only, and consumers must treat an absent field as
+   * "content not stored", never as an empty file. */
+  content?: string | null;
 }
 
 /** Serializable robots evidence (RobotsInfo minus the matcher function). */

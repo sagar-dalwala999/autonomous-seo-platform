@@ -18,11 +18,11 @@ export async function fetchLlmsTxt(origin: string, userAgent: string): Promise<L
   try {
     res = await fetchWithTimeout(url, { headers: { "user-agent": userAgent } });
   } catch {
-    return { present: false, url, statusCode: null, bytes: 0, fetchedAt };
+    return { present: false, url, statusCode: null, bytes: 0, content: null, fetchedAt };
   }
 
   if (res.status !== 200) {
-    return { present: false, url, statusCode: res.status, bytes: 0, fetchedAt };
+    return { present: false, url, statusCode: res.status, bytes: 0, content: null, fetchedAt };
   }
 
   const body = await res.text();
@@ -30,5 +30,8 @@ export async function fetchLlmsTxt(origin: string, userAgent: string): Promise<L
   // must not look like HTML before it counts as a real llms.txt.
   const looksLikeHtml = /^\s*(<!doctype html|<html)/i.test(body);
   const present = !looksLikeHtml && body.trim().length > 0;
-  return { present, url, statusCode: res.status, bytes: Buffer.byteLength(body), fetchedAt };
+  // The body is stored with the evidence so the dashboard can show the actual file (content is
+  // null when absent — never fabricated). Optional on the type so robots.json written by older
+  // crawler versions parse unchanged (metadata only).
+  return { present, url, statusCode: res.status, bytes: Buffer.byteLength(body), content: present ? body : null, fetchedAt };
 }
