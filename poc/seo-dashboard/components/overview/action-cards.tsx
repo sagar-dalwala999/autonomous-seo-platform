@@ -97,8 +97,8 @@ export async function ActionCards({ report, runId }: { report: CrawlSummary; run
         label="Crawl coverage"
         value={String(report.coveragePercent)}
         unit="%"
-        footnote={`${report.successful} of ${report.attempted} pages`}
-        ctaHref={`/failures${q}`}
+        footnote={`${report.successful} of ${report.attempted} attempted`}
+        ctaHref={`/sitemap${q}#failures`}
         bar={report.coveragePercent}
       />
       <CompactActionCard
@@ -106,8 +106,8 @@ export async function ActionCards({ report, runId }: { report: CrawlSummary; run
         tint="amber"
         label="Failed URLs"
         value={String(report.failed)}
-        footnote={report.failed > 0 ? `Top: ${topFailureClasses(report.failuresByClass)}` : "No crawl failures"}
-        ctaHref={`/failures${q}`}
+        footnote={`Top: ${topFailureClasses(report.failuresByClass)}`}
+        ctaHref={`/sitemap${q}#failures`}
       />
       <CompactActionCard
         icon={ShieldOff}

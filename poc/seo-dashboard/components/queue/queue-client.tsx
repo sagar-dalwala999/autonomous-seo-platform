@@ -216,7 +216,7 @@ export function QueueClient({ initialJobs }: { initialJobs: QueueJob[] }) {
               {jobs.map((job) => (
                 <Tr key={job.runId}>
                   <Td className="normal-case">
-                    <Link href={`/runs?run=${encodeURIComponent(job.runId)}`} className="font-mono text-xs text-primary underline underline-offset-2">
+                    <Link href={`/?run=${encodeURIComponent(job.runId)}`} className="font-mono text-xs text-primary underline underline-offset-2">
                       {job.label ?? job.runId}
                     </Link>
                   </Td>

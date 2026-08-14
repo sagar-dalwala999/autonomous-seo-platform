@@ -22,7 +22,8 @@ export type StatusCounts = Record<"2xx" | "3xx" | "4xx" | "5xx", number>;
  *  records only) that /pages?status=X filters over — this is the single source of truth for the
  *  Overview status chips, so a chip's count and its destination's row count can't diverge again.
  *  Excludes failures that never produced a page record (e.g. a request blocked after retries) —
- *  those live in failures.json and are only ever shown at /failures, never at /pages. */
+ *  those live in failures.json and are only ever shown in the failures section of /sitemap,
+ *  never at /pages. */
 export function buildStatusCounts(pages: CrawledPageWithId[]): StatusCounts {
   const counts: StatusCounts = { "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0 };
   for (const p of pages) {
@@ -267,7 +268,7 @@ export function buildKpiStrip(
 /** Filtered-list destination for a hex/timeline legend row — design-dna-v2 Law 1 (every number links). */
 export function pagesHrefForStatusClass(runId: string, cls: StatusClass): string {
   const q = `run=${encodeURIComponent(runId)}`;
-  return cls === "blocked" ? `/failures?${q}` : `/pages?${q}&status=${cls}`;
+  return cls === "blocked" ? `/sitemap?${q}#failures` : `/pages?${q}&status=${cls}`;
 }
 
 export function pagesHrefForRenderMode(runId: string, mode: "http" | "playwright"): string {

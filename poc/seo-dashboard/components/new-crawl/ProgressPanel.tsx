@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Radar, RadioTower, ListTodo, FileText, LayoutDashboard } from "lucide-react";
+import { Radar, ListTodo, FileText, LayoutDashboard } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AnalyzeNowButton } from "@/components/analyze-now-button";
+import { ActivityStreamClient } from "@/components/activity/activity-stream-client";
 import { StatusChip } from "./StatusChip";
 import { StopCrawlControl } from "@/components/crawl-control/StopCrawlControl";
 import type { CancelledCrawlStatus } from "@/lib/crawl-control-client";
@@ -17,7 +19,11 @@ interface Props {
   status: CrawlStatusResponse | null;
   onViewRun: () => void;
   onViewDashboard?: () => void;
-  onOpenActivity?: () => void;
+  /** Called after an in-app "Analyze & view issues" finishes (post-analyze router.refresh already
+   *  happened inside the button) — the parent navigates to /issues?run= here. */
+  onViewIssues?: () => void;
+  // onOpenActivity — the Activity Log moved out of the modal into the inline panel below (the
+  // full activity stream replaces the raw Log tail; no modal entry points remain).
   onOpenQueue?: () => void;
   onRetry: () => void;
   onCancelled: (crawl: CancelledCrawlStatus) => void;
@@ -57,16 +63,11 @@ export function ProgressPanel({
   status,
   onViewRun,
   onViewDashboard,
-  onOpenActivity,
+  onViewIssues,
   onOpenQueue,
   onRetry,
   onCancelled,
 }: Props) {
-  const logRef = useRef<HTMLPreElement>(null);
-
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [status?.log]);
 
   if (panelState === "form") {
     return (
@@ -74,22 +75,8 @@ export function ProgressPanel({
         <EmptyState
           icon={Radar}
           title="No crawl running"
-          description="Fill out the form and submit to start a new crawl, or inspect the queue and live activity below."
+          description="Fill out the form and submit to start a new crawl."
         />
-        <div className="flex flex-wrap items-center justify-center gap-2 pt-2 border-t border-border/60">
-          {onOpenActivity && (
-            <Button type="button" variant="outline" size="sm" onClick={onOpenActivity}>
-              <RadioTower size={13} strokeWidth={1.75} />
-              <span>Activity Log</span>
-            </Button>
-          )}
-          {onOpenQueue && (
-            <Button type="button" variant="outline" size="sm" onClick={onOpenQueue}>
-              <ListTodo size={13} strokeWidth={1.75} />
-              <span>Crawl Queue</span>
-            </Button>
-          )}
-        </div>
       </div>
     );
   }
@@ -100,12 +87,13 @@ export function ProgressPanel({
         <StatusChip state="starting" />
         <p className="text-sm text-secondary">Spawning crawler…</p>
         <div className="flex items-center gap-2 pt-4">
-          {onOpenActivity && (
+          {/* Live Activity button removed with the modal — see the empty-state note above. */}
+          {/* {onOpenActivity && (
             <Button type="button" variant="outline" size="sm" onClick={onOpenActivity}>
               <RadioTower size={13} strokeWidth={1.75} />
               <span>Live Activity</span>
             </Button>
-          )}
+          )} */}
           {onOpenQueue && (
             <Button type="button" variant="outline" size="sm" onClick={onOpenQueue}>
               <ListTodo size={13} strokeWidth={1.75} />
@@ -141,20 +129,22 @@ export function ProgressPanel({
           )}
         </div>
 
-        {/* Quick Modal Triggers */}
+        {/* Quick Modal Triggers — both the Activity and Queue ghost triggers are commented out
+            per owner request 2026-08-14: the activity log is inline below (full event stream,
+            no filters) and the Queue button was removed from this row. */}
         <div className="flex items-center gap-1.5">
-          {onOpenActivity && (
+          {/* {onOpenActivity && (
             <Button type="button" variant="ghost" size="sm" onClick={onOpenActivity} title="Open Activity Stream">
               <RadioTower size={13} strokeWidth={1.75} className={panelState === "running" ? "text-ok animate-pulse" : "text-secondary"} />
               <span className="text-xs">Activity</span>
             </Button>
-          )}
-          {onOpenQueue && (
+          )} */}
+          {/* {onOpenQueue && (
             <Button type="button" variant="ghost" size="sm" onClick={onOpenQueue} title="Open Crawl Queue">
               <ListTodo size={13} strokeWidth={1.75} className="text-secondary" />
               <span className="text-xs">Queue</span>
             </Button>
-          )}
+          )} */}
         </div>
       </div>
 
@@ -163,7 +153,10 @@ export function ProgressPanel({
 
       {panelState === "running" && runId && <StopCrawlControl runId={runId} onCancelled={onCancelled} className="self-start" />}
 
-      <div>
+      {/* Raw Log tail (crawl.log text) — commented out per owner request 2026-08-14: the full
+          activity stream below takes its place (every crawl event + progress row, same as the
+          Activity Log page). Re-enable to restore the raw log tail. */}
+      {/* <div>
         <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-faint">Log tail</p>
         <pre
           ref={logRef}
@@ -171,7 +164,23 @@ export function ProgressPanel({
         >
           {status?.log && status.log.length > 0 ? status.log.join("\n") : "waiting for output…"}
         </pre>
-      </div>
+      </div> */}
+
+      {runId && (
+        <div>
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-faint">Activity log</p>
+          {/* Owner request 2026-08-14: every crawl event stays visible here, but the search/
+              status/kind filter bar is hidden — the Activity Log page keeps its filters. */}
+          <ActivityStreamClient
+            key={runId}
+            runId={runId}
+            initialEvents={[]}
+            initialSource="durable"
+            urlToPageId={[]}
+            hideFilters
+          />
+        </div>
+      )}
 
       {panelState === "done" && (
         <div className="flex flex-col gap-2 pt-1">
@@ -187,6 +196,16 @@ export function ProgressPanel({
               </Button>
             )}
           </div>
+          {runId && onViewIssues && (
+            <AnalyzeNowButton
+              runId={runId}
+              label="Analyze & view issues"
+              variant="outline"
+              size="md"
+              fullWidth
+              onComplete={onViewIssues}
+            />
+          )}
         </div>
       )}
       {panelState === "failed" && (

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { History, Map as MapIcon } from "lucide-react";
-import { resolveRunId, getRun, getPages } from "@/lib/data";
+import { resolveRunId, getRun, getPages, readSkipped } from "@/lib/data";
 import { findPageIdByUrl } from "@/lib/data-explorer";
 import { buildAiAccessTable } from "@/lib/data-sitefiles";
 import { findRuleSourceLine } from "@/lib/sitefiles-lines";
@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { RobotsPanel } from "@/components/sitemap/robots-panel";
 import { LlmsPanel } from "@/components/sitemap/llms-panel";
 import { AiCrawlerHeadline, AiCrawlerTable } from "@/components/sitemap/ai-crawler-table";
+import { FailuresSections } from "@/components/sitemap/failures-sections";
 
 interface Props {
   searchParams: Promise<{ run?: string }>;
@@ -74,10 +75,13 @@ export default async function SitemapPage({ searchParams }: Props) {
     return <EmptyState icon={History} title="No crawl runs yet" description="Run a crawl to see robots.txt and sitemap evidence here." />;
   }
 
-  const { robots, sitemaps, report } = await getRun(runId);
+  const { robots, sitemaps, report, blocked, failures } = await getRun(runId);
   const pages = await getPages(runId);
+  const skipped = await readSkipped(runId);
 
-  if (!robots && !sitemaps) {
+  // Failures/blocked/skipped live here too (merged from the former /failures page), so the
+  // empty state only fires when there is neither site evidence nor anything failed.
+  if (!robots && !sitemaps && failures.length === 0 && blocked.length === 0 && skipped.length === 0) {
     return <EmptyState icon={MapIcon} title="No robots/sitemap evidence for this run" />;
   }
 
@@ -182,6 +186,8 @@ export default async function SitemapPage({ searchParams }: Props) {
           <CrossRefList title="Sitemap entries failed" urls={report.sitemap.sitemapEntriesFailed} runId={runId} pages={pages} tone="danger" noLinkLabel="never crawled" />
         </div>
       )}
+
+      <FailuresSections runId={runId} failures={failures} blocked={blocked} skipped={skipped} pages={pages} />
     </div>
   );
 }

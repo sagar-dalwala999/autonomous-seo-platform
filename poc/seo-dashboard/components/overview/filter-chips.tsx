@@ -31,11 +31,13 @@ export function FilterChips({
   const counts = buildStatusCounts(pages);
   const q = `run=${encodeURIComponent(runId)}`;
 
-  const chips: { label: string; count: number; href: string; danger?: boolean; tone?: "ok" | "warn" | "danger" | "neutral" }[] = [
-    { label: "2xx OK", count: counts["2xx"], href: `/pages?${q}&status=2xx`, tone: "ok" },
-    { label: "3xx Redirects", count: counts["3xx"], href: `/pages?${q}&status=3xx`, tone: "warn" },
-    { label: "4xx Client Errors", count: counts["4xx"], href: `/pages?${q}&status=4xx`, danger: counts["4xx"] > 0, tone: "danger" },
-    { label: "5xx Server Errors", count: counts["5xx"], href: `/pages?${q}&status=5xx`, danger: counts["5xx"] > 0, tone: "danger" },
+  const chips: { label: string; count: number; href: string; danger?: boolean }[] = [
+    { label: "All pages", count: pages.length + failureCount + blockedCount, href: `/pages?${q}` },
+    { label: "Successful", count: counts["2xx"], href: `/pages?${q}&status=2xx` },
+    { label: "Redirects", count: counts["3xx"], href: `/pages?${q}&status=3xx` },
+    { label: "Client errors", count: counts["4xx"], href: `/pages?${q}&status=4xx`, danger: counts["4xx"] > 0 },
+    { label: "Server errors", count: counts["5xx"], href: `/pages?${q}&status=5xx`, danger: counts["5xx"] > 0 },
+    { label: "Blocked", count: report.blockedByRobots, href: `/sitemap?${q}#failures`, danger: report.blockedByRobots > 0 },
   ];
 
   return (

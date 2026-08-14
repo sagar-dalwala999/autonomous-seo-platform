@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
           blockedByRobots: 0,
           coveragePercent: 0,
           maxDepthSeen: null,
+          analyzed: false,
           status: "running",
         },
         ...rows,

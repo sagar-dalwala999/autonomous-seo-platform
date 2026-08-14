@@ -1,5 +1,5 @@
 /** Server-only (node:fs). Never import this from a "use client" file — no server-only pkg guard (not an allowed dep). */
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat, open } from "node:fs/promises";
 import path from "node:path";
 import { pickDefaultRun } from "./run-selection";
 import { getCrawlStatus } from "./crawl-runner";
@@ -49,6 +49,39 @@ async function countPageFiles(runId: string): Promise<number> {
   }
 }
 
+/** Presence check only, no parsing — the run selector's "Analyze" affordance needs to know which
+ *  runs have an issues.json (analyzed) and which don't (offer Analyze). Deliberately a stat, not a
+ *  readAnalysisReport: listRuns runs on every layout render and shouldn't pay parse cost per run. */
+async function hasIssues(runId: string): Promise<boolean> {
+  try {
+    await stat(path.join(RUNS_DIR, runId, "issues.json"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Health score read as a PREFIX scan, not a full parse — issues.json for a big run is megabyte-
+ *  sized and listRuns runs on every layout render, so the selector's health dot reads only the
+ *  first chunk (healthScore is a top-level field near the top of the file) and regexes it out.
+ *  null when the run has no issues.json or the field is absent (predates the health score). */
+async function readHealthScore(runId: string): Promise<number | null> {
+  try {
+    const fh = await open(path.join(RUNS_DIR, runId, "issues.json"), "r");
+    try {
+      const buf = Buffer.alloc(4096);
+      const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+      const head = buf.toString("utf8", 0, bytesRead);
+      const m = head.match(/"healthScore"\s*:\s*([0-9.]+)/);
+      return m ? Number(m[1]) : null;
+    } finally {
+      await fh.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
 export interface RunListItem {
   runId: string;
   startUrl: string;
@@ -66,6 +99,14 @@ export interface RunListItem {
    *  raw report data elsewhere (e.g. the running-crawl synthetic row in app/api/crawls/route.ts) —
    *  callers that care check for "cancelled" specifically, so a missing field just means "not that". */
   state?: "completed" | "cancelled";
+  /** True when this run has an issues.json — the run selector offers an "Analyze" action for
+   *  unanalyzed runs (false/absent), and a fresh analyze writes issues.json + automation-report.json
+   *  + fix-plan.json. Not read from report.json (the crawler never records it there), so it is
+   *  computed here by checking the run dir. */
+  analyzed?: boolean;
+  /** Health score from the run's issues.json when analyzed (prefix scan, see readHealthScore);
+   *  null on unanalyzed runs or runs that predate the score. Drives the selector's health dot. */
+  healthScore?: number | null;
 }
 
 export async function listRuns(): Promise<RunListItem[]> {
@@ -87,6 +128,8 @@ export async function listRuns(): Promise<RunListItem[]> {
         coveragePercent: report.coveragePercent,
         maxDepthSeen: typeof report.maxDepthSeen === "number" ? report.maxDepthSeen : null,
         state: "completed",
+        analyzed: await hasIssues(runId),
+        healthScore: await readHealthScore(runId),
       });
       continue;
     }
@@ -110,6 +153,8 @@ export async function listRuns(): Promise<RunListItem[]> {
         coveragePercent: 0,
         maxDepthSeen: null,
         state: "cancelled",
+        analyzed: await hasIssues(runId),
+        healthScore: null,
       });
       continue;
     }

@@ -34,6 +34,12 @@ export function PageIssuesPanel({ issues, analyzed, runId }: { issues: Issue[]; 
                 <SeverityBadge severity={issue.severity} />
                 <span className="font-mono text-xs text-faint">{issue.ruleId}</span>
                 <span className="text-xs text-faint">· {issue.category}</span>
+                <Link
+                  href={`/issues?run=${encodeURIComponent(runId)}&rule=${encodeURIComponent(issue.ruleId)}`}
+                  className="ml-auto text-[11px] font-medium text-primary underline underline-offset-2 hover:opacity-80"
+                >
+                  All pages with this rule
+                </Link>
               </div>
               <p className="mt-1.5 text-foreground">{issue.message}</p>
               <p className="mt-1 text-xs text-secondary">{issue.howToFix}</p>

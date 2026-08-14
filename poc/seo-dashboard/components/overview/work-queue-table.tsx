@@ -27,6 +27,12 @@ function issueTone(issue: WorkQueueRow["issues"][number]): "danger" | "warn" {
   return issue === "http-5xx" || issue === "redirect-loop" ? "danger" : "warn";
 }
 
+/** Search term for the Issues screen — the issues search matches rule ids, messages, and URLs,
+ *  so each badge deep-links to the findings that name that concept rather than to a dead filter. */
+function issueSearch(issue: WorkQueueRow["issues"][number]): string {
+  return issue === "http-5xx" ? "5xx" : issue === "http-4xx" ? "4xx" : issue;
+}
+
 export function WorkQueueTable({ rows, runId }: { rows: WorkQueueRow[]; runId: string }) {
   if (rows.length === 0) {
     return (
@@ -48,7 +54,7 @@ export function WorkQueueTable({ rows, runId }: { rows: WorkQueueRow[]; runId: s
         {rows.map((row) => {
           const evidenceHref = row.pageId
             ? `/pages/${row.pageId}?run=${encodeURIComponent(runId)}`
-            : `/failures?run=${encodeURIComponent(runId)}`;
+            : `/sitemap?run=${encodeURIComponent(runId)}#failures`;
           return (
           <Tr key={row.key}>
             <Td className="max-w-sm">
@@ -64,9 +70,16 @@ export function WorkQueueTable({ rows, runId }: { rows: WorkQueueRow[]; runId: s
             <Td>
               <div className="flex flex-wrap gap-1">
                 {row.issues.map((issue) => (
-                  <Badge key={issue} tone={issueTone(issue)}>
-                    {issueLabel(issue)}
-                  </Badge>
+                  <Link
+                    key={issue}
+                    href={`/issues?run=${encodeURIComponent(runId)}&q=${encodeURIComponent(issueSearch(issue))}`}
+                    title={`View “${issueLabel(issue)}” findings`}
+                    className="outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-control"
+                  >
+                    <Badge tone={issueTone(issue)} className="transition-colors duration-150 hover:opacity-80">
+                      {issueLabel(issue)}
+                    </Badge>
+                  </Link>
                 ))}
               </div>
             </Td>

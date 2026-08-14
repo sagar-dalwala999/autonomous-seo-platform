@@ -1,9 +1,10 @@
 import { History, FileWarning } from "lucide-react";
-import { resolveRunId } from "@/lib/data";
+import { listRuns, resolveRunId } from "@/lib/data";
 import { buildMeasurements } from "@/lib/data-measurements";
 import { adaptMeasurements } from "@/lib/measurements-view";
 import { drilldownSupportedIds } from "@/lib/measurements-drilldown";
 import { EmptyState } from "@/components/ui/empty-state";
+import { RunBreadcrumb } from "@/components/shell/run-breadcrumb";
 import { MeasurementsGrid } from "@/components/measurements/measurements-grid";
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 
 export default async function MeasurementsPage({ searchParams }: Props) {
   const { run } = await searchParams;
+  const runs = await listRuns();
   const runId = await resolveRunId(run);
 
   if (!runId) {
@@ -31,6 +33,7 @@ export default async function MeasurementsPage({ searchParams }: Props) {
 
   return (
     <div className="space-y-6">
+      <RunBreadcrumb runs={runs} runId={runId} current="All Measurements" />
       <p className="text-sm text-secondary">
         Run <span className="font-medium text-foreground">{runId}</span> · {data.pagesInRun.toLocaleString()} page{data.pagesInRun === 1 ? "" : "s"} · generated{" "}
         {new Date(data.generatedAt).toLocaleString()}

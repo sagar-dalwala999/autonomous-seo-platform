@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutGrid, ArrowRight, Gauge } from "lucide-react";
+import { LayoutGrid, Gauge } from "lucide-react";
 import { listRuns, getRun, getPages, resolveRunId } from "@/lib/data";
 import { buildHexMatrix, buildTimeline, buildWorkQueue, buildKpiStrip } from "@/lib/data-overview";
 import { buildMeasurements } from "@/lib/data-measurements";
@@ -96,8 +96,27 @@ export default async function OverviewPage({ searchParams }: Props) {
       {/* Compact Action Metric Cards */}
       <ActionCards report={report} runId={runId} />
 
-      {/* Commented out to bring measurements module up prominently */}
-      {/* <KpiStripView strip={kpiStrip} runId={runId} /> */}
+      {/* Trend strip: the four crawl-level KPIs with deltas vs the previous run — restored from
+          the earlier design (buildKpiStrip was already computed below), with a one-click jump to
+          the full compare view when there IS a previous run to diff against. */}
+      <div className="space-y-2">
+        <KpiStripView strip={kpiStrip} runId={runId} />
+        {previousRunItem && (
+          <p className="text-xs text-faint">
+            Comparing against{" "}
+            <Link
+              href={`/compare?base=${encodeURIComponent(previousRunItem.runId)}&head=${encodeURIComponent(runId)}`}
+              className="text-primary underline underline-offset-2 hover:opacity-80"
+            >
+              the previous crawl
+            </Link>{" "}
+            · view the full{" "}
+            <Link href={`/compare?base=${encodeURIComponent(previousRunItem.runId)}&head=${encodeURIComponent(runId)}`} className="text-primary underline underline-offset-2 hover:opacity-80">
+              run comparison
+            </Link>
+          </p>
+        )}
+      </div>
 
       {/* <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <div className="lg:col-span-3">
@@ -120,13 +139,8 @@ export default async function OverviewPage({ searchParams }: Props) {
                 Comprehensive technical SEO indicators across indexability, content quality, links, head metadata, and performance.
               </p>
             </div>
-            <Link
-              href={`/measurements?run=${encodeURIComponent(runId)}`}
-              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline self-start sm:self-auto"
-            >
-              <span>Full screen view</span>
-              <ArrowRight size={13} strokeWidth={1.75} />
-            </Link>
+            {/* "Full screen view" link to /measurements removed per owner request 2026-08-14 —
+                the measurements grid renders inline here; the /measurements page is unreachable. */}
           </div>
           <MeasurementsGrid runId={runId} data={measurementsData} drilldownSupportedIds={supportedIds} />
         </section>

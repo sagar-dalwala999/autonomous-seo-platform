@@ -1,8 +1,10 @@
 import { History, ShieldQuestion } from "lucide-react";
-import { resolveRunId, getPages, getRun } from "@/lib/data";
+import { listRuns, resolveRunId, getPages, getRun } from "@/lib/data";
 import { readAnalysisReport } from "@/lib/data-issues";
 import { readAutomationReport, readFixPlan, readHealthHistory } from "@/lib/data-issue-extras";
 import { EmptyState } from "@/components/ui/empty-state";
+import { AnalyzeNowButton } from "@/components/analyze-now-button";
+import { RunBreadcrumb } from "@/components/shell/run-breadcrumb";
 import { IssuesClient } from "@/components/issues/issues-client";
 
 interface Props {
@@ -11,6 +13,7 @@ interface Props {
 
 export default async function IssuesPage({ searchParams }: Props) {
   const sp = await searchParams;
+  const runs = await listRuns();
   const runId = await resolveRunId(sp.run);
 
   if (!runId) {
@@ -21,20 +24,15 @@ export default async function IssuesPage({ searchParams }: Props) {
 
   if (!report) {
     return (
-      <EmptyState
-        icon={ShieldQuestion}
-        title="This run hasn't been analyzed"
-        description={
-          <>
-            Run{" "}
-            <code className="rounded border border-border bg-elevated px-1 py-0.5 text-[11px]">
-              npm run analyze -- --run {runId}
-            </code>{" "}
-            from <code className="rounded border border-border bg-elevated px-1 py-0.5 text-[11px]">seo-crawler-poc</code> to generate
-            issues.json for this run.
-          </>
-        }
-      />
+      <div className="space-y-6">
+        <RunBreadcrumb runs={runs} runId={runId} current="What to Fix." />
+        <EmptyState
+          icon={ShieldQuestion}
+          title="This run hasn't been analyzed"
+          description="Analyze it right here — no terminal needed. This also generates automation levels and a fix plan for the run."
+          action={<AnalyzeNowButton runId={runId} label="Analyze now" />}
+        />
+      </div>
     );
   }
 
@@ -60,6 +58,7 @@ export default async function IssuesPage({ searchParams }: Props) {
 
   return (
     <div className="space-y-6">
+      <RunBreadcrumb runs={runs} runId={runId} current="What to Fix." />
       <header className="space-y-1">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-faint">SEO rules</p>
         <h2 className="text-2xl font-semibold leading-tight tracking-tight text-foreground">What needs fixing.</h2>

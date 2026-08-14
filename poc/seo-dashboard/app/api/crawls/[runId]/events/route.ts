@@ -57,10 +57,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // mode does not need this — a real terminal row (`crawl-finished` | `crawl-cancelled`, the
       // taxonomy in src/events/types.ts) is what a sibling agent writes.
       const TERMINAL_KINDS = new Set(["crawl-finished", "crawl-cancelled"]);
+      // Which mode this stream opened in. A dashboard-started crawl connects before the crawler
+      // has written events.ndjson, so the stream starts on the synthetic fallback; when the durable
+      // file appears mid-stream the two sequences are independent (both 1-based), so re-reading
+      // from the synthetic-advanced cursor would skip the durable crawl-started/crawl-finished
+      // rows and tail forever on "Live" (observed live). Restart at 0 on that transition — the
+      // client appends by seq and the synthetic rows were different event types, so no loss.
+      let openedDurable: boolean | null = null;
       const pullOnce = async (): Promise<boolean> => {
         const durable = await hasDurableEventLog(runId);
+        if (openedDurable === null) openedDurable = durable;
         if (durable) {
-          for (const evt of await readDurableEvents(runId, cursor)) {
+          // Reset to 0 only on the FIRST durable read after a synthetic open — once switched, the
+          // cursor is the durable sequence and every later tick must resume from it, not re-send
+          // the whole durable log each second (that duplicated crawl-started on every tail tick).
+          const from = openedDurable === false ? 0 : cursor;
+          openedDurable = true;
+          for (const evt of await readDurableEvents(runId, from)) {
             send(evt);
             cursor = evt.seq;
             if (TERMINAL_KINDS.has(evt.type)) doneSent = true;

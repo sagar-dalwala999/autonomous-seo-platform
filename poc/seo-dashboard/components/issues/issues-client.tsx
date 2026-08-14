@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ChevronRight, FileWarning, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableContainer, TableHead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { AnalyzeNowButton } from "@/components/analyze-now-button";
 import { toCsv } from "@/lib/csv";
 import { KpiTiles, type KpiTileSpec } from "./kpi-tiles";
 import { IssuesToolbar, type IssueGroup } from "./issues-toolbar";
@@ -105,6 +106,9 @@ export function IssuesClient({
   const show = ["failing", "all", "passed"].includes(searchParams.get("show") ?? "") ? (searchParams.get("show") as string) : "failing";
   const activeSeverity = SEVERITIES.includes(searchParams.get("severity") as IssueSeverity) ? (searchParams.get("severity") as IssueSeverity) : null;
   const activeCategory = searchParams.get("category");
+  // Deep link: /issues?rule=<ruleId> narrows the list to one rule (linked from the page-detail
+  // issues panel and the finding rows) — the rule's finding renders wherever it lives.
+  const activeRule = searchParams.get("rule");
   const activeAutomationRaw = searchParams.get("fixType");
   const activeAutomation = AUTOMATION_KEYS.includes(activeAutomationRaw as (typeof AUTOMATION_KEYS)[number])
     ? (activeAutomationRaw as (typeof AUTOMATION_KEYS)[number])
@@ -122,6 +126,29 @@ export function IssuesClient({
   const [fixPlanRuleId, setFixPlanRuleId] = useState<string | null>(null);
   const [showAccepted, setShowAccepted] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
+
+  // j/k keyboard stepping across the rendered finding rows (j = down, k = up): focuses the next
+  // row's summary and scrolls it into view; Enter/Space then toggles it natively (summary is a
+  // focusable element). Works in any view that renders FindingRows (area/priority).
+  useEffect(() => {
+    function onKey(e: globalThis.KeyboardEvent) {
+      if (e.key !== "j" && e.key !== "k") return;
+      const target = e.target as HTMLElement | null;
+      const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (typing) return;
+      const rows = [...document.querySelectorAll<HTMLElement>("details[data-finding-rule]")];
+      if (rows.length === 0) return;
+      const focused = document.activeElement?.closest("details[data-finding-rule]") as HTMLElement | null;
+      const current = focused ? rows.indexOf(focused) : -1;
+      const next = e.key === "j" ? (current + 1) % rows.length : (current - 1 + rows.length) % rows.length;
+      const summary = rows[next].querySelector("summary");
+      rows[next].scrollIntoView({ behavior: "smooth", block: "nearest" });
+      (summary as HTMLElement | null)?.focus({ preventScroll: true });
+      e.preventDefault();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   const { isMuted, isPending, mute, unmute } = useMutes(runId, serverMutedRuleIds);
 
@@ -217,10 +244,21 @@ export function IssuesClient({
         });
       });
     }
+    if (activeRule) list = list.filter((g) => g.ruleId === activeRule);
     return list;
-  }, [show, failingGroups, passingGroups, activeSeverity, activeAutomation, automationLevelByRule, qInput, findingsByRule, pageIdToUrl]);
+  }, [show, failingGroups, passingGroups, activeSeverity, activeAutomation, automationLevelByRule, qInput, findingsByRule, pageIdToUrl, activeRule]);
 
   const areaGroups = useMemo(() => groupByArea(groups), [groups]);
+  // Category options from the areas present in the current (filtered) list — never a stale static
+  // list, so the Area dropdown only ever offers what can actually be selected.
+  const categoryOptions = useMemo(
+    () =>
+      areaGroups.map((a) => {
+        const firing = a.groups.filter((g) => g.items.length > 0).length;
+        return { value: a.category, label: a.category, count: firing };
+      }),
+    [areaGroups],
+  );
   const priorityRanked = useMemo(
     () => [...groups].sort((a, b) => (findingsByRule.get(b.ruleId)?.priority ?? -1) - (findingsByRule.get(a.ruleId)?.priority ?? -1)),
     [groups, findingsByRule],
@@ -257,7 +295,7 @@ export function IssuesClient({
   );
   const filtersActive = show !== "failing" || activeSeverity !== null || activeAutomation !== null;
 
-  const clearAll = () => updateParams({ show: null, severity: null, fixType: null, q: null });
+  const clearAll = () => updateParams({ show: null, severity: null, fixType: null, q: null, rule: null });
 
   // clicking a severity tile forces the list back to "needs fixing" — clicking "3 critical"
   // and being shown passing rules would be absurd
@@ -384,6 +422,9 @@ export function IssuesClient({
         onShow={(v) => updateParams({ show: v === "failing" ? null : v })}
         severity={activeSeverity}
         onSeverity={(v) => updateParams({ severity: v })}
+        category={activeCategory}
+        onCategory={(v) => updateParams({ category: v })}
+        categoryOptions={categoryOptions}
         automation={activeAutomation}
         onAutomation={(v) => updateParams({ fixType: v })}
         automationOptions={automationOptions}
@@ -409,10 +450,11 @@ export function IssuesClient({
               </Button>
             </div>
             <p className="mt-2 text-xs text-secondary">
-              Fix plan not generated for this run yet — run{" "}
-              <code className="rounded border border-border bg-elevated px-1 py-0.5 text-[11px]">npm run fixplan -- --run {runId}</code>{" "}
-              from <code className="rounded border border-border bg-elevated px-1 py-0.5 text-[11px]">seo-crawler-poc</code>.
+              Fix plan not generated for this run yet — analyze it in-app and the chain also writes the fix plan.
             </p>
+            <div className="mt-3">
+              <AnalyzeNowButton runId={runId} label="Analyze & generate fix plan" variant="outline" onComplete={() => setPlanOpen(false)} />
+            </div>
           </div>
         ))}
 
@@ -507,7 +549,12 @@ export function IssuesClient({
             </>
           )
         ) : worstPages.length === 0 ? (
-          <EmptyState icon={FileWarning} title="Worst-page ranking not available" description="This run predates the priority engine — reanalyze it to get a real per-page harm ranking." />
+          <div className="space-y-3">
+            <EmptyState icon={FileWarning} title="Worst-page ranking not available" description="This run predates the priority engine — analyze it to get a real per-page harm ranking." />
+            <div className="flex justify-center">
+              <AnalyzeNowButton runId={runId} label="Analyze this run" />
+            </div>
+          </div>
         ) : (
           <>
             <SectionHeading title="Worst pages" sub="the same findings, asked page-first" />
