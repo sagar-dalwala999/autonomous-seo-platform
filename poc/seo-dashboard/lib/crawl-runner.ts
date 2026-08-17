@@ -70,6 +70,9 @@ export interface StartCrawlInput {
   /** --screenshots. Off by default: it forces a browser render on every page, not just JS ones. */
   screenshots?: boolean;
   aliases?: string[];
+  /** Explicit URLs to crawl at depth 0 in addition to the start URL (--seed, repeatable). Used by
+   *  the GSC targeted crawl: Google-excluded URLs under one reason become the seeds. */
+  seedUrls?: string[];
   /** Credentials for protected routes; null/undefined = anonymous crawl. Never persisted — see startCrawl. */
   auth?: CrawlAuthInput | null;
   /** Guard rails; only meaningful when auth is present. */
@@ -242,6 +245,7 @@ function validate(input: StartCrawlInput): {
   render: "auto" | "never" | "always";
   screenshots: boolean;
   aliases: string[];
+  seedUrls: string[];
   auth: CrawlAuthInput | null;
   safety: CrawlSafetyInput | null;
 } {
@@ -279,6 +283,19 @@ function validate(input: StartCrawlInput): {
 
   const aliases = (input.aliases ?? []).map((h) => h.trim()).filter(Boolean);
 
+  const seedUrls = (input.seedUrls ?? []).map((s) => s.trim()).filter(Boolean);
+  for (const seed of seedUrls) {
+    try {
+      const parsed = new URL(seed);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new CrawlValidationError(`Seed URL "${seed}" must be http(s).`);
+      }
+    } catch (err) {
+      if (err instanceof CrawlValidationError) throw err;
+      throw new CrawlValidationError(`"${seed}" is not a valid seed URL.`);
+    }
+  }
+
   const auth = validateAuth(input.auth);
   const safety = validateSafety(input.safety, auth !== null);
 
@@ -290,6 +307,7 @@ function validate(input: StartCrawlInput): {
     render,
     screenshots: input.screenshots === true,
     aliases,
+    seedUrls,
     auth,
     safety,
   };
@@ -302,7 +320,7 @@ export async function startCrawl(input: StartCrawlInput): Promise<CrawlStatus> {
   // (the child inherits env: process.env). Explicit POSTGRES_SYNC_ENABLED=false is respected.
   await ensureCrawlSyncEnabled();
 
-  const { url, maxPages, maxDepth, respectRobots, render, screenshots, aliases, auth, safety } = validate(input);
+  const { url, maxPages, maxDepth, respectRobots, render, screenshots, aliases, seedUrls, auth, safety } = validate(input);
 
   const isLocal = url.hostname === "localhost" || /^127\./.test(url.hostname);
   const rps = isLocal ? 10 : 2;
@@ -327,6 +345,7 @@ export async function startCrawl(input: StartCrawlInput): Promise<CrawlStatus> {
   if (!respectRobots) args.push("--no-robots");
   if (screenshots) args.push("--screenshots");
   if (aliases.length > 0) args.push("--alias", aliases.join(","));
+  for (const seed of seedUrls) args.push("--seed", seed);
   if (maxDepth !== null) args.push("--max-depth", String(maxDepth));
 
   // Credential hygiene: these values only ever flow into `args`, handed straight to spawn()'s
