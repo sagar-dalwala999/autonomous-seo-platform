@@ -20,6 +20,9 @@ Usage:
 Options:
   --max-pages N       Max pages to crawl (default: 200; 0 = no limit, crawl the whole site)
   --max-depth N       Max link-hops from the start URL (default: unlimited; 0 = start URL only)
+  --seed URL          Extra explicit URL to crawl at depth 0, repeatable (robots gate does not
+                         apply to it — it was directly asked for). With --max-depth 0 the crawl
+                         fetches exactly these + the start URL.
   --concurrency N      Max concurrent requests (default: 5)
   --no-robots          Ignore robots.txt (evidence is still recorded; enforcement is skipped)
   --render MODE         auto | never | always (default: auto)
@@ -104,6 +107,7 @@ async function main(): Promise<void> {
     options: {
       "max-pages": { type: "string" },
       "max-depth": { type: "string" },
+      seed: { type: "string", multiple: true },
       concurrency: { type: "string" },
       "no-robots": { type: "boolean" },
       render: { type: "string" },
@@ -366,6 +370,7 @@ async function main(): Promise<void> {
       eventLog,
       preFetchedRobots: preFetchedRobots ?? undefined,
       screenshotBudget,
+      extraSeeds: values.seed ?? [],
     });
     printSummary(summary);
 

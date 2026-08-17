@@ -130,6 +130,13 @@ export interface CrawlRuntime {
   /** Max non-error pages captured by screenshot importance rank when options.screenshots is on;
    * every error page is captured regardless. Defaults to DEFAULT_SCREENSHOT_BUDGET. */
   screenshotBudget?: number;
+  /**
+   * Explicit URLs to crawl in addition to the start URL, each at depth 0 exactly like the
+   * operator's own start URL (robots gate does NOT apply to them — they were directly asked
+   * for). Used by the dashboard's GSC "Crawl N URLs" targeted crawl: the URLs Google excluded
+   * under one inspection reason become the seeds, with maxDepth 0 so only they are fetched.
+   */
+  extraSeeds?: string[];
 }
 
 /** Thrown when a crawl is cancelled mid-run, so the caller (the queue) can classify the job as
@@ -826,6 +833,22 @@ export async function runCrawl(
   discovery.set(normalizedStart, { depth: 0, parentUrl: null, sources: new Set(["seed"]) });
   discoveredCount++;
   const initialSeed: SeedRequest[] = [makeSeedRequest(normalizedStart)];
+
+  // Extra explicit seeds (GSC targeted crawl): same treatment as the start URL — depth 0, robots
+  // gate skipped (directly asked for), scope still enforced so an off-host URL can't slip in.
+  for (const raw of runtime.extraSeeds ?? []) {
+    const normalized = normalizeUrl(raw);
+    if (!normalized) continue;
+    if (!isInScope(normalized, scope)) continue;
+    const existing = discovery.get(normalized);
+    if (existing) {
+      existing.sources.add("seed");
+      continue;
+    }
+    discovery.set(normalized, { depth: 0, parentUrl: null, sources: new Set(["seed"]) });
+    discoveredCount++;
+    initialSeed.push(makeSeedRequest(normalized));
+  }
 
   for (const entry of sitemap.entries) {
     const remapped = remapAliasedUrl(entry.url, scope);
