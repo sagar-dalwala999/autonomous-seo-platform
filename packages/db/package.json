@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "import:legacy": "tsx src/importer/cli.ts",
     "import:gsc-inspections": "tsx src/gsc/cli.ts",
+    "gsc:backfill-json": "tsx src/gsc/backfillCli.ts",
     "import:findings": "tsx src/crawl/cli.ts",
     "prune": "tsx src/retention/cli.ts",
     "roundtrip": "tsx src/test/roundtrip.ts",
