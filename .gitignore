@@ -25,8 +25,6 @@ playwright-report/
 coverage/
 
 # Secrets — never commit
-.env
-.env.*
 !.env.example
 *credentials*.json
 *token*.json
@@ -41,3 +39,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 .freebuff/*
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+config.bat

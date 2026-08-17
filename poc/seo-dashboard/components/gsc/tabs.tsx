@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CircleAlert } from "lucide-react";
 import type { GscMetricsResponse, GscInspectionRunResult, GscVerdict, GscBreakdownRow, GscPageMetric } from "./gsc-api";
-import { inspectGscUrls } from "./gsc-api";
+import { crawlGscReason, inspectGscUrls } from "./gsc-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableContainer, TableHead, Th, Tr, Td } from "@/components/ui/table";
@@ -381,13 +381,17 @@ function IndexingTab({
   const [reasonFilter, setReasonFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
-  // Reset pagination when a filter changes (derived state, no effect).
+  // Reset pagination when a filter changes (derived state, no effect — the codebase bans
+  // set-state-in-effect, so this mirrors the original component's derived-state pattern).
   const [prevFilterKey, setPrevFilterKey] = useState("");
   const filterKey = `${filter}|${reasonFilter}|${search}`;
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey);
     setOffset(0);
   }
+
+  const [targetedCrawlBusy, setTargetedCrawlBusy] = useState(false);
+  const [targetedCrawl, setTargetedCrawl] = useState<{ runId: string; urlsQueued: number } | null>(null);
 
   async function inspect(batchSize: number) {
     setRunning(true);
@@ -425,6 +429,23 @@ function IndexingTab({
   }, [data.inspections, filter, reasonFilter, search]);
 
   const visible = rows.slice(offset, offset + ROW_LIMIT);
+
+  const selectedReason = reasons.find((reason) => reason.coverageState === reasonFilter) ?? null;
+  const canCrawlSelectedReason = selectedReason?.verdict === "NEUTRAL" && rows.length > 0;
+
+  async function crawlExcludedUrls() {
+    if (reasonFilter === null || rows.length === 0) return;
+    setTargetedCrawlBusy(true);
+    setError(null);
+    try {
+      const result = await crawlGscReason(domain, reasonFilter, rows.map((row) => row.pageUrl));
+      setTargetedCrawl(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not queue the targeted crawl.");
+    } finally {
+      setTargetedCrawlBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -551,6 +572,11 @@ function IndexingTab({
                   Clear reason filter
                 </Button>
               )}
+              {canCrawlSelectedReason && (
+                <Button size="sm" onClick={crawlExcludedUrls} disabled={targetedCrawlBusy}>
+                  {targetedCrawlBusy ? "Queuing crawl…" : `Crawl ${rows.length.toLocaleString()} URL${rows.length === 1 ? "" : "s"}`}
+                </Button>
+              )}
               <div className="flex h-8 max-w-xs items-center gap-2 rounded-control border border-border bg-subtle px-2.5 focus-within:ring-2 focus-within:ring-primary">
                 <input
                   type="search"
@@ -564,12 +590,15 @@ function IndexingTab({
             </div>
           </div>
 
+          {targetedCrawl && <TargetedCrawlProgress runId={targetedCrawl.runId} urlsQueued={targetedCrawl.urlsQueued} />}
+
           <TableContainer>
             <TableHead>
               <Th>URL</Th>
               <Th>Status</Th>
               <Th>Reason</Th>
               <Th>Google&rsquo;s canonical</Th>
+              <Th>Details</Th>
               <Th>Last crawled</Th>
             </TableHead>
             <tbody>
@@ -621,6 +650,12 @@ function InspectionRow({ row }: { row: GscMetricsResponse["inspections"][number]
       </Td>
       <Td className="max-w-xs truncate normal-case text-secondary">
         <span title={row.coverageState ?? ""}>{row.coverageState ?? "—"}</span>
+        {row.indexingState && row.indexingState !== "INDEXING_ALLOWED" && (
+          <span className="block text-[10px] text-faint">{row.indexingState.replace(/_/g, " ").toLowerCase()}</span>
+        )}
+        {row.pageFetchState && row.pageFetchState !== "SUCCESSFUL" && (
+          <span className="block text-[10px] text-faint">fetch: {row.pageFetchState.replace(/_/g, " ").toLowerCase()}</span>
+        )}
       </Td>
       <Td className="normal-case text-secondary">
         {canonicalMismatch ? (
@@ -637,16 +672,200 @@ function InspectionRow({ row }: { row: GscMetricsResponse["inspections"][number]
           <span className="text-faint">same</span>
         )}
       </Td>
+      <Td>
+        <InspectionDetails row={row} />
+      </Td>
       <Td className="text-faint">{row.lastCrawlTime ? new Date(row.lastCrawlTime).toLocaleDateString() : "never"}</Td>
     </Tr>
   );
 }
 
+/**
+ * Per-URL inspection details, expandable in place. Sitemaps, referring URLs and the rich
+ * results / AMP / mobile usability verdicts come straight from Google's raw inspection payload;
+ * the "Open in GSC" link jumps to the full report in Search Console.
+ */
+function InspectionDetails({ row }: { row: GscMetricsResponse["inspections"][number] }) {
+  const raw = row.raw ?? {};
+  const referringUrls = Array.isArray(raw.referringUrls) ? raw.referringUrls : [];
+  const rich = (raw.richResults ?? null) as Record<string, unknown> | null;
+  const amp = (raw.amp ?? null) as Record<string, unknown> | null;
+  const mobile = (raw.mobileUsability ?? null) as Record<string, unknown> | null;
+  const richVerdict = typeof rich?.verdict === "string" ? rich.verdict : null;
+  const ampVerdict = typeof amp?.verdict === "string" ? amp.verdict : null;
+  const mobileVerdict = typeof mobile?.verdict === "string" ? mobile.verdict : null;
+  const sitemaps = row.sitemaps ?? [];
+  const inspectionLink = typeof raw.inspectionResultLink === "string" ? raw.inspectionResultLink : null;
+
+  const chips: string[] = [];
+  if (richVerdict) chips.push(`Rich ${richVerdict.replace(/_/g, " ").toLowerCase()}`);
+  if (ampVerdict) chips.push(`AMP ${ampVerdict.replace(/_/g, " ").toLowerCase()}`);
+  if (mobileVerdict) chips.push(`Mobile ${mobileVerdict.replace(/_/g, " ").toLowerCase()}`);
+
+  return (
+    <details className="group">
+      <summary className="cursor-pointer list-none text-xs text-secondary outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
+        <span className="text-faint group-open:hidden">▸ details</span>
+        <span className="hidden text-faint group-open:inline">▾ details</span>
+      </summary>
+      <div className="mt-1.5 space-y-1.5 text-[11px] leading-relaxed text-secondary">
+        <DetailList title="Sitemaps" values={sitemaps} />
+        <DetailList title="Referring URLs" values={referringUrls.map(String)} />
+        {chips.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {chips.map((c) => (
+              <span key={c} className="rounded-control border border-border bg-subtle px-1.5 py-0.5 text-faint">
+                {c}
+              </span>
+            ))}
+          </div>
+        )}
+        {rich && <JsonDetail title="Rich results" value={rich} />}
+        {amp && <JsonDetail title="AMP" value={amp} />}
+        {mobile && <JsonDetail title="Mobile usability" value={mobile} />}
+        {inspectionLink && (
+          <a
+            href={inspectionLink}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="block text-primary underline underline-offset-2"
+          >
+            Open in GSC
+          </a>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function DetailList({ title, values }: { title: string; values: string[] }) {
+  return (
+    <div>
+      <span className="font-medium text-faint">{title}: </span>
+      {values.length === 0 ? (
+        <span className="text-faint">none reported</span>
+      ) : (
+        <ul className="ml-3 list-disc pl-3">
+          {values.map((value) => (
+            <li key={value} className="break-all">
+              {value}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function JsonDetail({ title, value }: { title: string; value: Record<string, unknown> }) {
+  return (
+    <div>
+      <span className="font-medium text-faint">{title}</span>
+      <pre className="mt-0.5 overflow-x-auto rounded-control border border-border bg-subtle p-1.5 text-[10px] text-secondary">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
+/** Live progress for a targeted crawl spawned from the Indexing tab (polls the run's counters). */
+function TargetedCrawlProgress({ runId, urlsQueued }: { runId: string; urlsQueued: number }) {
+  const [status, setStatus] = useState<{ state: string; crawled: number | null; discovered: number | null } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const intervalId = setInterval(tick, 2000);
+
+    async function tick() {
+      try {
+        const res = await fetch(`/api/crawls/${encodeURIComponent(runId)}/progress`, { cache: "no-store" });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(body?.message ?? `Progress request failed with status ${res.status}`);
+        }
+        const data = (await res.json()) as { state: string; crawled: number | null; discovered: number | null };
+        if (!cancelled) setStatus(data);
+        if (data.state === "done" || data.state === "failed" || data.state === "cancelled") {
+          clearInterval(intervalId);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load crawl progress.");
+        clearInterval(intervalId);
+      }
+    }
+
+    tick();
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [runId]);
+
+  const pct =
+    status && status.discovered != null && status.discovered > 0
+      ? Math.min(100, Math.round(((status.crawled ?? 0) / status.discovered) * 100))
+      : null;
+
+  return (
+    <div className="rounded-card border border-border bg-subtle p-3 text-xs text-secondary">
+      <p>
+        Targeted crawl running for <strong className="text-foreground">{urlsQueued.toLocaleString()}</strong> URL
+        {urlsQueued === 1 ? "" : "s"}.{" "}
+        <a href={`/runs?run=${encodeURIComponent(runId)}`} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+          View full progress
+        </a>
+      </p>
+      {error && <p className="mt-1 text-danger">{error}</p>}
+      {status && !error && status.state !== "done" && (
+        <div className="mt-1.5 flex items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border-strong">
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${pct ?? 0}%` }}
+            />
+          </div>
+          <span className="text-faint">
+            {status.crawled ?? 0}
+            {status.discovered != null ? `/${status.discovered}` : ""}
+          </span>
+        </div>
+      )}
+      {status?.state === "done" && <p className="mt-1 text-ok">Crawl completed — {status.crawled ?? 0} pages fetched.</p>}
+    </div>
+  );
+}
+
 function ImpliedIndexTable({ pages }: { pages: GscPageMetric[] }) {
   const [offset, setOffset] = useState(0);
-  const visible = pages.slice(offset, offset + ROW_LIMIT);
+  const [search, setSearch] = useState("");
+  // Derived-state reset (see IndexingTab) — avoids the banned set-state-in-effect rule.
+  const [prevQ, setPrevQ] = useState("");
+  const q = search.trim().toLowerCase();
+  if (q !== prevQ) {
+    setPrevQ(q);
+    setOffset(0);
+  }
+  const filtered = q ? pages.filter((p) => p.pageUrl.toLowerCase().includes(q)) : pages;
+  const visible = filtered.slice(offset, offset + ROW_LIMIT);
   return (
     <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-secondary">
+          {filtered.length.toLocaleString()} shown{filtered.length !== pages.length ? ` of ${pages.length.toLocaleString()}` : ""}
+        </span>
+        <div className="flex h-8 max-w-xs items-center gap-2 rounded-control border border-border bg-subtle px-2.5 focus-within:ring-2 focus-within:ring-primary">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filter by URL…"
+            aria-label="Filter confirmed indexed URLs"
+            className="min-w-0 flex-1 bg-transparent text-xs text-foreground placeholder:text-faint outline-none"
+          />
+        </div>
+      </div>
       <TableContainer>
         <TableHead>
           <Th>URL</Th>
@@ -671,16 +890,16 @@ function ImpliedIndexTable({ pages }: { pages: GscPageMetric[] }) {
           ))}
         </tbody>
       </TableContainer>
-      {pages.length > ROW_LIMIT && (
+      {filtered.length > ROW_LIMIT && (
         <div className="flex items-center justify-between text-xs text-faint">
           <span>
-            Showing {offset + 1}–{Math.min(offset + ROW_LIMIT, pages.length)} of {pages.length.toLocaleString()}
+            Showing {offset + 1}–{Math.min(offset + ROW_LIMIT, filtered.length)} of {filtered.length.toLocaleString()}
           </span>
           <div className="flex gap-1.5">
             <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => setOffset((o) => Math.max(0, o - ROW_LIMIT))}>
               Previous
             </Button>
-            <Button variant="outline" size="sm" disabled={offset + ROW_LIMIT >= pages.length} onClick={() => setOffset((o) => o + ROW_LIMIT)}>
+            <Button variant="outline" size="sm" disabled={offset + ROW_LIMIT >= filtered.length} onClick={() => setOffset((o) => o + ROW_LIMIT)}>
               Next
             </Button>
           </div>
