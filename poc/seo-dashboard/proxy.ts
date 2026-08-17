@@ -7,7 +7,7 @@ import { safeNextPath } from "@/lib/safe-next-path";
 //
 // Default-deny: anything not explicitly listed here requires a valid session. A new route added
 // later is protected automatically — it must opt out by name, never the reverse.
-const PUBLIC_EXACT_PATHS = new Set(["/api/health", "/api/ready", "/api/version"]);
+const PUBLIC_EXACT_PATHS = new Set(["/api/health", "/api/ready", "/api/version", "/api/gsc/callback"]);
 const PUBLIC_PREFIXES = ["/login", "/signup", "/auth"];
 // Signed-in visitors get bounced off these back into the app. /auth/* is deliberately excluded —
 // the callback and signout routes must stay reachable while authenticated, or sign-out breaks.

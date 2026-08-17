@@ -1612,3 +1612,138 @@ model Artifact {
   @@index([projectId])
   @@map("artifacts")
 }
+
+// =============================================================================
+// Google Search Console (GSC) — dashboard integration
+// =============================================================================
+// Keyed directly by the Supabase user id (`sub`, a UUID) rather than through
+// User -> Project -> Site. The dashboard's GSC integration has no concept of a
+// Project/Site row — it mirrors the JSON store it replaces (storage/gsc/<userId>),
+// so these tables carry their own (userId, domain) scope. There is deliberately
+// no FK to `users`: a dashboard user may not have a User row yet, and a FK would
+// block inserts. Every query filters by userId at the application layer.
+//
+// Date *keys* (date, windowStart, windowEnd, attempt date) stay as text so the
+// dashboard's string comparisons and window math keep working unchanged; real
+// timestamps use timestamptz and are converted to ISO strings at the store API.
+
+/// One Google account connection, per user. Tokens stored encrypted.
+model GscConnection {
+  userId              String    @id @db.Uuid
+  googleEmail         String?   @db.VarChar(320)
+  /// AES-256-GCM ciphertext — never the raw refresh token.
+  refreshTokenEnc     String    @db.Text
+  /// Short-lived access token, cached to avoid a refresh round-trip per call.
+  accessToken         String?   @db.Text
+  accessTokenExpiresAt DateTime? @db.Timestamptz(6)
+  scopes              String    @db.Text
+  createdAt           DateTime  @db.Timestamptz(6)
+  updatedAt           DateTime  @db.Timestamptz(6)
+
+  @@map("gsc_connections")
+}
+
+/// A Search Console property linked to one of the dashboard's sites.
+model GscLinkedProperty {
+  userId          String   @db.Uuid
+  domain          String   @db.VarChar(255)
+  siteUrl         String   @db.Text
+  propertyType    String   @db.VarChar(16)
+  permissionLevel String?  @db.VarChar(64)
+  lastSyncedAt    DateTime? @db.Timestamptz(6)
+  createdAt       DateTime @db.Timestamptz(6)
+
+  @@id([userId, domain])
+  @@index([userId])
+  @@map("gsc_linked_properties")
+}
+
+/// Per-(user, domain) bundle metadata for synced metrics (the rows themselves
+/// live in gsc_page_metrics / gsc_breakdowns).
+model GscMetricsMeta {
+  userId       String   @db.Uuid
+  domain       String   @db.VarChar(255)
+  siteUrl      String   @db.Text
+  propertyType String   @db.VarChar(16)
+  lastSyncedAt DateTime? @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  @@id([userId, domain])
+  @@index([userId])
+  @@map("gsc_metrics_meta")
+}
+
+/// One stored page-metric row (per day, per page, per search type).
+model GscPageMetric {
+  userId        String  @db.Uuid
+  domain        String  @db.VarChar(255)
+  /// ISO date key (YYYY-MM-DD) — kept as text so window math stays string-based.
+  date          String  @db.VarChar(10)
+  pageUrl       String  @db.Text
+  normalizedUrl String? @db.Text
+  searchType    String  @db.VarChar(8)
+  clicks        Int
+  impressions   Int
+  ctr           Float
+  position      Float
+
+  @@id([userId, domain, date, pageUrl, searchType])
+  @@index([userId, domain, searchType, date])
+  @@map("gsc_page_metrics")
+}
+
+/// One stored breakdown row (per window, per dimension).
+model GscBreakdown {
+  userId      String  @db.Uuid
+  domain      String  @db.VarChar(255)
+  dimension   String  @db.VarChar(24)
+  searchType  String  @db.VarChar(8)
+  keyValue    String  @db.Text
+  windowStart String  @db.VarChar(10)
+  windowEnd   String  @db.VarChar(10)
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float
+
+  @@id([userId, domain, dimension, searchType, windowStart, windowEnd, keyValue])
+  @@index([userId, domain, searchType])
+  @@map("gsc_breakdowns")
+}
+
+/// One URL Inspection result (per user, domain, page).
+model GscInspection {
+  userId          String    @db.Uuid
+  domain          String    @db.VarChar(255)
+  pageUrl         String    @db.Text
+  verdict         String    @db.VarChar(24)
+  coverageState   String?   @db.Text
+  robotsTxtState  String?   @db.Text
+  indexingState   String?   @db.Text
+  pageFetchState  String?   @db.Text
+  googleCanonical String?   @db.Text
+  userCanonical   String?   @db.Text
+  lastCrawlTime   DateTime? @db.Timestamptz(6)
+  crawledAs       String?   @db.Text
+  sitemaps        String[]
+  raw             Json?     @db.JsonB
+  inspectedAt     DateTime  @db.Timestamptz(6)
+
+  @@id([userId, domain, pageUrl])
+  @@index([userId, domain])
+  @@map("gsc_inspections")
+}
+
+/// One URL Inspection API call, for quota metering (successful or not).
+model GscInspectionAttempt {
+  id        BigInt  @id @default(autoincrement())
+  userId    String  @db.Uuid
+  domain    String  @db.VarChar(255)
+  /// Pacific date key (YYYY-MM-DD) — Google's quota resets at midnight Pacific.
+  date      String  @db.VarChar(10)
+  succeeded Boolean
+
+  @@index([userId, domain, date])
+  @@map("gsc_inspection_attempts")
+}
+

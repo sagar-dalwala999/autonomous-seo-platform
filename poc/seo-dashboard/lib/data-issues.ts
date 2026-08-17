@@ -7,6 +7,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { AnalysisReport, FixPlan, FixPlanItem, Issue, IssueSeverity } from "./types";
+import { dbReadCrawlAnalysis } from "./crawl-source";
 
 const STORAGE_ROOT = process.env.CRAWLER_STORAGE_DIR
   ? path.resolve(process.cwd(), process.env.CRAWLER_STORAGE_DIR)
@@ -15,14 +16,15 @@ const STORAGE_ROOT = process.env.CRAWLER_STORAGE_DIR
 const RUNS_DIR = path.join(STORAGE_ROOT, "runs");
 
 export async function readAnalysisReport(runId: string): Promise<AnalysisReport | null> {
+  // JSON first (full fidelity); Postgres fallback for runs synced from another machine.
   try {
     const text = await readFile(path.join(RUNS_DIR, runId, "issues.json"), "utf8");
     return JSON.parse(text) as AnalysisReport;
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code !== "ENOENT") console.warn(`[lib/data-issues] malformed issues.json skipped: run ${runId}`);
-    return null;
   }
+  return dbReadCrawlAnalysis(runId);
 }
 
 export async function readFixPlan(runId: string): Promise<FixPlan | null> {

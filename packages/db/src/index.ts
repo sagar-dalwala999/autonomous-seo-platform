@@ -9,6 +9,30 @@ export { loadEnv } from "./env.js";
 export { createPrismaClient, createDirectPrismaClient, POOL_PROFILES } from "./client.js";
 export { syncRunToPostgres } from "./sync/syncRun.js";
 export type { SyncOptions, SyncResult } from "./sync/syncRun.js";
+export { importIssuesToPostgres, importFindingsForCrawl } from "./crawl/importIssues.js";
+export type { FindingsImportResult } from "./crawl/importIssues.js";
+export {
+  dbCrawlExists,
+  dbListCrawlRuns,
+  dbGetCrawlRun,
+  dbReadCrawlSkipped,
+  dbGetCrawlPages,
+  dbGetCrawlPage,
+  dbReadCrawlAnalysis,
+} from "./crawl/readStore.js";
+export type {
+  CrawlRunListItem,
+  CrawlReportRow,
+  RobotsEvidenceRow,
+  SitemapResultRow,
+  FailureRow,
+  SkippedUrlRow,
+  CrawlRunDetailRow,
+  CrawledPageRow,
+  AnalysisIssueRow,
+  AnalysisFindingRow,
+  AnalysisReportRow,
+} from "./crawl/readStore.js";
 export { pruneOldCrawls } from "./retention/prune.js";
 export { detectScoringModelCutoff } from "./importer/modelCutoff.js";
 export {
@@ -20,3 +44,26 @@ export {
   BUCKETS,
 } from "./storage/supabaseStorage.js";
 export type { BucketEnsureResult, UploadResult, SignedUrlResult, JwtVerifyResult } from "./storage/supabaseStorage.js";
+export {
+  gscReadConnection,
+  gscWriteConnection,
+  gscDeleteConnection,
+  gscReadLinkedProperty,
+  gscWriteLinkedProperty,
+  gscDeleteLinkedProperty,
+  gscListLinkedDomains,
+  gscReadMetrics,
+  gscWriteMetrics,
+  gscReadInspections,
+  gscWriteInspections,
+} from "./gsc/store.js";
+export type {
+  GscConnectionRow,
+  GscLinkedPropertyRow,
+  GscPageMetricRow,
+  GscBreakdownRow,
+  GscMetricsBundle,
+  GscInspectionRow,
+  GscInspectionAttemptRow,
+  GscInspectionsBundle,
+} from "./gsc/store.js";

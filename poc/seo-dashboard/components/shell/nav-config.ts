@@ -1,4 +1,4 @@
-import { LayoutGrid, History, FileText, Map, ShieldAlert, GitCompare, ListTodo, Link2, ImageIcon, GitBranch, type LucideIcon } from "lucide-react";
+import { LayoutGrid, History, FileText, Map, ShieldAlert, GitCompare, ListTodo, Link2, ImageIcon, GitBranch, SearchCheck, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -30,6 +30,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: "/issues", label: "What to Fix.", icon: ShieldAlert },
       { href: "/sitemap", label: "Sitemap & Robots", icon: Map },
+      { href: "/gsc", label: "Search Console", icon: SearchCheck },
     ],
   },
   {
@@ -63,6 +64,7 @@ export const ROUTE_TITLES: { test: (path: string) => boolean; title: string }[] 
   { test: (p) => p.startsWith("/pages/"), title: "Page detail" },
   { test: (p) => p === "/pages", title: "Pages" },
   { test: (p) => p === "/sitemap", title: "Sitemap & Robots" },
+  { test: (p) => p === "/gsc", title: "Search Console" },
   { test: (p) => p === "/issues", title: "What to Fix." },
   { test: (p) => p === "/compare", title: "Compare" },
   // Activity Log — see the commented-out nav item above; the page is unreachable from the UI.
@@ -81,7 +83,7 @@ export function titleForPath(pathname: string): string {
 
 // Hidden where a single "current run" is meaningless: /new-crawl has no run yet, /runs IS the
 // run list, /compare drives its own base/head pair via RunPairSelector.
-const RUN_SELECTOR_HIDDEN_ON = new Set(["/new-crawl", "/runs", "/compare", "/queue"]);
+const RUN_SELECTOR_HIDDEN_ON = new Set(["/new-crawl", "/runs", "/compare", "/queue", "/gsc"]);
 
 export function showRunSelectorFor(pathname: string): boolean {
   return !RUN_SELECTOR_HIDDEN_ON.has(pathname);

@@ -42,3 +42,6 @@ next-env.d.ts
 
 # QA screenshots are throwaway verification artifacts, not source.
 qa-screenshots/
+
+# GSC runtime state (OAuth connections, synced metrics) — never commit tokens or user data.
+/storage/

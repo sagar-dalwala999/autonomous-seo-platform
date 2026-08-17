@@ -15,6 +15,7 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile, stat } from "node:fs/promises";
 import { openSync, closeSync } from "node:fs";
 import path from "node:path";
+import { syncRunFindingsToDb, ensureCrawlSyncEnabled } from "./crawl-source";
 
 const CRAWLER_DIR = process.env.CRAWLER_PROJECT_DIR
   ? path.resolve(process.cwd(), process.env.CRAWLER_PROJECT_DIR)
@@ -297,6 +298,9 @@ function validate(input: StartCrawlInput): {
 export async function startCrawl(input: StartCrawlInput): Promise<CrawlStatus> {
   const running = await findRunningCrawl();
   if (running) throw new CrawlConflictError(running);
+  // If Postgres is reachable, POSTGRES_SYNC_ENABLED defaults on so this spawned crawl syncs
+  // (the child inherits env: process.env). Explicit POSTGRES_SYNC_ENABLED=false is respected.
+  await ensureCrawlSyncEnabled();
 
   const { url, maxPages, maxDepth, respectRobots, render, screenshots, aliases, auth, safety } = validate(input);
 
@@ -419,6 +423,12 @@ function spawnAnalyze(runId: string): void {
     });
     closeSync(fd);
     child.on("error", () => {});
+    // Post-analyze findings sync: the crawl's own Postgres sync runs at crawl close, BEFORE this
+    // analyzer writes issues.json — so push findings up once analysis finishes. No-op when
+    // Postgres is unreachable, and never throws into the crawl path.
+    child.on("exit", () => {
+      void syncRunFindingsToDb(runId);
+    });
     child.unref();
   } catch {
     // best-effort — never let this surface as a crawl failure

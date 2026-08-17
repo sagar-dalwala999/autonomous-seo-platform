@@ -3,6 +3,7 @@ import { readFile, readdir, stat, open } from "node:fs/promises";
 import path from "node:path";
 import { pickDefaultRun } from "./run-selection";
 import { getCrawlStatus } from "./crawl-runner";
+import { hasRunOnDisk, dbListCrawlRuns, dbGetCrawlRun, dbGetCrawlPages, dbGetCrawlPage, dbReadCrawlSkipped } from "./crawl-source";
 import type {
   CrawledPageWithId,
   CrawlSummary,
@@ -109,7 +110,17 @@ export interface RunListItem {
   healthScore?: number | null;
 }
 
-export async function listRuns(): Promise<RunListItem[]> {
+/** Pure merge used by listRuns: JSON runs win (full fidelity), DB-only runs fill the gaps. */
+export function mergeRunLists(jsonRuns: RunListItem[], dbRuns: RunListItem[]): RunListItem[] {
+  const seen = new Set(jsonRuns.map((r) => r.runId));
+  const merged = [...jsonRuns];
+  for (const dbRun of dbRuns) {
+    if (!seen.has(dbRun.runId)) merged.push(dbRun);
+  }
+  return merged.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
+}
+
+async function listRunsFromDisk(): Promise<RunListItem[]> {
   const runIds = await listDirs(RUNS_DIR);
   const items: RunListItem[] = [];
   let skipped = 0;
@@ -164,6 +175,14 @@ export async function listRuns(): Promise<RunListItem[]> {
   return items.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
 }
 
+/** Runs on this disk (JSON, full fidelity) merged with runs that only exist in Postgres (e.g.
+ *  crawled on another machine) — same runId is never duplicated, the local copy wins. */
+export async function listRuns(): Promise<RunListItem[]> {
+  const jsonRuns = await listRunsFromDisk();
+  const dbRuns = await dbListCrawlRuns();
+  return dbRuns ? mergeRunLists(jsonRuns, dbRuns) : jsonRuns;
+}
+
 /** A valid ?run= always wins; otherwise pickDefaultRun's rule decides (see lib/run-selection.ts). */
 export async function resolveRunId(requested?: string): Promise<string | null> {
   const runs = await listRuns();
@@ -179,7 +198,7 @@ export interface RunDetail {
   failures: FailureRecord[];
 }
 
-export async function getRun(runId: string): Promise<RunDetail> {
+async function getRunFromDisk(runId: string): Promise<RunDetail> {
   const dir = path.join(RUNS_DIR, runId);
   const [report, robots, sitemaps, blocked, failures] = await Promise.all([
     readJson<CrawlSummary>(path.join(dir, "report.json")),
@@ -191,11 +210,23 @@ export async function getRun(runId: string): Promise<RunDetail> {
   return { report, robots, sitemaps, blocked: blocked ?? [], failures: failures ?? [] };
 }
 
+/** JSON when this machine has the run's files, otherwise reconstruct from Postgres. */
+export async function getRun(runId: string): Promise<RunDetail> {
+  if (await hasRunOnDisk(runId)) return getRunFromDisk(runId);
+  const dbDetail = await dbGetCrawlRun(runId);
+  if (dbDetail) return dbDetail;
+  return { report: null, robots: null, sitemaps: null, blocked: [], failures: [] };
+}
+
 /** Additive (B3). skipped.json is absent on runs from before the safety guard rails shipped
  *  (or on runs with no auth) — optional-safe, [] means "nothing skipped", never an error. */
 export async function readSkipped(runId: string): Promise<SkippedUrlRecord[]> {
-  const skipped = await readJson<SkippedUrlRecord[]>(path.join(RUNS_DIR, runId, "skipped.json"));
-  return skipped ?? [];
+  if (await hasRunOnDisk(runId)) {
+    const skipped = await readJson<SkippedUrlRecord[]>(path.join(RUNS_DIR, runId, "skipped.json"));
+    return skipped ?? [];
+  }
+  const dbSkipped = await dbReadCrawlSkipped(runId);
+  return dbSkipped ?? [];
 }
 
 /** runId -> parsed pages. Map iteration order is insertion order, so the first key is the
@@ -261,7 +292,7 @@ async function readPagesDir(runId: string): Promise<CrawledPageWithId[]> {
  *  (graph, export, compare, dedup) — those still hold O(pages), inherently, to do their job.
  *  Deliberately uncached: caching every streamed page would just re-create the problem this exists
  *  to avoid. */
-export async function* streamPages(runId: string): AsyncGenerator<CrawledPageWithId> {
+async function* streamPagesFromDisk(runId: string): AsyncGenerator<CrawledPageWithId> {
   const dir = path.join(RUNS_DIR, runId, "pages");
   let files: string[];
   try {
@@ -289,7 +320,7 @@ export async function* streamPages(runId: string): AsyncGenerator<CrawledPageWit
 
 /** Every page record of a run. Filtering/sorting is the callers' job — they all want the full set
  *  and narrow it with the client-safe helpers in lib/explorer-shared.ts. */
-export async function getPages(runId: string): Promise<CrawledPageWithId[]> {
+async function getPagesFromDisk(runId: string): Promise<CrawledPageWithId[]> {
   const stamp = await runStamp(runId);
   const hit = pagesCache.get(runId);
   if (hit && hit.stamp === stamp) {
@@ -307,7 +338,14 @@ export async function getPages(runId: string): Promise<CrawledPageWithId[]> {
   return pages;
 }
 
-export async function getPage(runId: string, pageId: string): Promise<CrawledPageWithId | null> {
+/** JSON when this machine has the run's files, otherwise reconstruct from Postgres. */
+export async function getPages(runId: string): Promise<CrawledPageWithId[]> {
+  if (await hasRunOnDisk(runId)) return getPagesFromDisk(runId);
+  const dbPages = await dbGetCrawlPages(runId);
+  return dbPages ?? [];
+}
+
+async function getPageFromDisk(runId: string, pageId: string): Promise<CrawledPageWithId | null> {
   const hit = pagesCache.get(runId);
   // Warm-cache peek only — never triggers a full load just to read one page.
   if (hit && hit.stamp === (await runStamp(runId))) {
@@ -316,6 +354,22 @@ export async function getPage(runId: string, pageId: string): Promise<CrawledPag
   }
   const page = await readJson<CrawledPageWithId>(path.join(RUNS_DIR, runId, "pages", `${pageId}.json`));
   return page ? { ...page, pageId } : null;
+}
+
+export async function getPage(runId: string, pageId: string): Promise<CrawledPageWithId | null> {
+  if (await hasRunOnDisk(runId)) return getPageFromDisk(runId, pageId);
+  return dbGetCrawlPage(runId, pageId);
+}
+
+/** DB-backed stream: pages come materialised from Postgres (no local files), yielded one at a
+ *  time for the same caller contract. JSON runs keep the bounded streaming path above. */
+export async function* streamPages(runId: string): AsyncGenerator<CrawledPageWithId> {
+  if (await hasRunOnDisk(runId)) {
+    yield* streamPagesFromDisk(runId);
+    return;
+  }
+  const pages = (await dbGetCrawlPages(runId)) ?? [];
+  for (const page of pages) yield page;
 }
 
 /** Pure path resolver — no I/O. Caller stats/serves the file (S10 scope). */

@@ -5,6 +5,7 @@ import type { PrismaClient } from "../../generated/client/index.js";
 import { ensureProjectAndSite } from "../seed.js";
 import { mapLegacyPage } from "../mapping/legacyPage.js";
 import { runRollups } from "./rollup.js";
+import { importFindingsForCrawl } from "../crawl/importIssues.js";
 
 const BATCH_SIZE = 500;
 
@@ -344,90 +345,14 @@ export async function syncRunToPostgres(
   }
 
   // --- findings/issues, gated by the scoring-model-era check the caller already applied ---
+  // Shared implementation with the dashboard's post-analyze sync (crawl/importIssues.ts) so the
+  // two paths can never drift; idempotent via the findingsAlreadyImported guard inside it.
   let findingsInserted = 0;
   let issuesInserted = 0;
-  const findingsAlreadyImported = (await prisma.finding.count({ where: { crawlId: crawl.id } })) > 0;
-  if (options.allowFindings && !findingsAlreadyImported) {
-    const issuesReport = await readJsonIfExists(path.join(runDir, "issues.json"));
-    if (issuesReport?.issues?.length) {
-      const byRule = new Map<string, any[]>();
-      for (const issue of issuesReport.issues) {
-        if (!byRule.has(issue.ruleId)) byRule.set(issue.ruleId, []);
-        byRule.get(issue.ruleId)!.push(issue);
-      }
-
-      for (const [ruleId, ruleIssues] of byRule) {
-        const first = ruleIssues[0];
-        const rule = await prisma.rule.upsert({
-          where: { projectId_slug_version: { projectId: null as any, slug: ruleId, version: 1 } },
-          update: {},
-          create: {
-            slug: ruleId,
-            version: 1,
-            scope: first.scope === "site" ? "SITE" : "PAGE",
-            category: first.category ?? "general",
-            defaultSeverity: (first.severity ?? "notice").toUpperCase(),
-            title: ruleId,
-            why: "",
-            howToFix: first.howToFix ?? "",
-          },
-        });
-
-        const affectedPageKeys = new Set(ruleIssues.map((i) => i.pageId).filter(Boolean));
-        const evaluatedPages = pagesInserted || 1;
-        const affectedPages = affectedPageKeys.size;
-        const reach = Math.sqrt(Math.min(1, affectedPages / evaluatedPages));
-
-        const finding = await prisma.finding.upsert({
-          where: { crawlId_ruleSlug: { crawlId: crawl.id, ruleSlug: ruleId } },
-          update: {},
-          create: {
-            crawlId: crawl.id,
-            projectId,
-            ruleId: rule.id,
-            ruleSlug: ruleId,
-            scope: rule.scope,
-            category: rule.category,
-            severity: rule.defaultSeverity,
-            status: "FAILING",
-            affectedPages,
-            affectedInstances: ruleIssues.length,
-            evaluatedPages,
-            reach,
-            sampleUrls: [...new Set(ruleIssues.map((i) => i.url).filter(Boolean))].slice(0, 5),
-          },
-        });
-        findingsInserted++;
-
-        await prisma.issue.createMany({
-          data: ruleIssues.map((i) => ({
-            crawlId: crawl.id,
-            projectId,
-            findingId: finding.id,
-            ruleId: rule.id,
-            ruleSlug: ruleId,
-            pageId: i.pageId ? (pageKeyToId.get(i.pageId) ?? null) : null,
-            severity: (i.severity ?? "notice").toUpperCase(),
-            category: i.category ?? "general",
-            message: i.message ?? "",
-            evidencePaths: Array.isArray(i.evidence) ? i.evidence.map((e: any) => e.field).filter(Boolean) : [],
-            evidence: i.evidence ?? null,
-          })),
-        });
-        issuesInserted += ruleIssues.length;
-      }
-
-      await prisma.crawl.update({
-        where: { id: crawl.id },
-        data: {
-          healthScore: issuesReport.healthScore ?? null,
-          rulebookVersion: issuesReport.rulebookVersion ?? null,
-          errorCount: issuesReport.counts?.error ?? 0,
-          warningCount: issuesReport.counts?.warning ?? 0,
-          noticeCount: issuesReport.counts?.notice ?? 0,
-        },
-      });
-    }
+  if (options.allowFindings) {
+    const result = await importFindingsForCrawl(prisma, crawl, runDir, pageKeyToId, pagesInserted || 1);
+    findingsInserted = result.findingsInserted;
+    issuesInserted = result.issuesInserted;
   }
 
   await runRollups(prisma, crawl.id);

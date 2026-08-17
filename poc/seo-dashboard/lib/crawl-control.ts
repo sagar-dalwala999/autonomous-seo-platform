@@ -10,6 +10,7 @@ import { openSync, closeSync } from "node:fs";
 import { mkdir, readFile, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { CrawlStatus, StartCrawlInput } from "./crawl-runner";
+import { syncRunFindingsToDb } from "./crawl-source";
 
 const execAsync = promisify(exec);
 
@@ -140,6 +141,10 @@ export async function reanalyzeCrawl(runId: string): Promise<{ started: true }> 
   });
   closeSync(fd);
   child.on("error", () => {});
+  // Push findings to Postgres once analysis finishes (no-op when the DB is unreachable).
+  child.on("exit", () => {
+    void syncRunFindingsToDb(runId);
+  });
   child.unref();
   return { started: true };
 }
@@ -203,6 +208,9 @@ export async function analyzeRunFull(runId: string, timeoutMs = 180_000): Promis
     await runAnalyzeStepAndWait(runId, step.entry, timeoutMs);
     artifacts.push(step.artifact);
   }
+  // All three artifacts exist now — sync findings to Postgres so other machines see this run's
+  // issues. No-op when the DB is unreachable (syncRunFindingsToDb is best-effort).
+  await syncRunFindingsToDb(runId);
   return { artifacts };
 }
 

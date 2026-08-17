@@ -13,6 +13,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "import:legacy": "tsx src/importer/cli.ts",
+    "import:gsc-inspections": "tsx src/gsc/cli.ts",
+    "import:findings": "tsx src/crawl/cli.ts",
     "prune": "tsx src/retention/cli.ts",
     "roundtrip": "tsx src/test/roundtrip.ts",
     "tenant-scope-test": "tsx src/test/tenantScope.ts"
