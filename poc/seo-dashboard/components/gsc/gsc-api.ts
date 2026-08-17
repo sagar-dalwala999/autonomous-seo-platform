@@ -184,3 +184,10 @@ export function inspectGscUrls(domain: string, batchSize?: number) {
     body: JSON.stringify(batchSize ? { batchSize } : {}),
   });
 }
+
+export function crawlGscReason(domain: string, reason: string, pageUrls: string[]) {
+  return request<{ runId: string; urlsQueued: number }>(`/api/gsc/crawl-reason/${encodeURIComponent(domain)}`, {
+    method: "POST",
+    body: JSON.stringify({ reason, pageUrls }),
+  });
+}

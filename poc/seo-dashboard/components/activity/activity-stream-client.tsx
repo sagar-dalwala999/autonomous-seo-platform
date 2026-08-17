@@ -62,6 +62,17 @@ export function ActivityStreamClient({ runId, initialEvents, initialSource, urlT
 
   const containerRef = useRef<HTMLDivElement>(null);
   const lastSeqRef = useRef(initialEvents.reduce((m, e) => Math.max(m, e.seq), 0));
+  /** Seq is the row's React key, so it must be unique in the list. Two overlapping streams (a
+   *  StrictMode double-connect, a tunnel-drop reconnect, or the synthetic→durable switch where
+   *  both sequences are 1-based) can deliver the same seq twice — `appendCapped`'s adjacent-only
+   *  dedupe misses that and React warns about duplicate keys. Track every seq we've accepted and
+   *  skip repeats (they're the same event re-sent, so dropping them loses nothing). */
+  const seenSeqRef = useRef<Set<number>>(new Set(initialEvents.map((e) => e.seq)));
+  /** Whether the LAST accepted event was synthetic. The durable log and the synthetic fallback
+   *  have independent 1-based sequences, so when a durable event first arrives after synthetic
+   *  ones we must forget the synthetic seqs — otherwise the durable log's 1..N would be wrongly
+   *  skipped as "duplicates" (see the events route's own mid-stream transition note). */
+  const lastEventSyntheticRef = useRef<boolean | null>(initialSource !== "durable" ? null : false);
   const esRef = useRef<EventSource | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelledRef = useRef(false);
@@ -93,7 +104,17 @@ export function ActivityStreamClient({ runId, initialEvents, initialSource, urlT
       } catch {
         return;
       }
-      if (typeof evt.seq === "number") lastSeqRef.current = Math.max(lastSeqRef.current, evt.seq);
+      // Durable log appeared mid-stream after synthetic rows — independent 1-based sequences,
+      // so accept its seqs as brand-new (clear the set on the FIRST durable event).
+      if (evt.synthetic === false && lastEventSyntheticRef.current === true) {
+        seenSeqRef.current = new Set();
+      }
+      if (typeof evt.seq === "number") {
+        if (seenSeqRef.current.has(evt.seq)) return; // same event re-delivered (replay/reconnect)
+        seenSeqRef.current.add(evt.seq);
+        lastSeqRef.current = Math.max(lastSeqRef.current, evt.seq);
+      }
+      lastEventSyntheticRef.current = evt.synthetic;
       if (evt.synthetic === false) setSource("durable");
       setEvents((prev) => appendCapped(prev, evt));
       if (TERMINAL_TYPES.has(evt.type)) {
